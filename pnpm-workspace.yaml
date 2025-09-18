@@ -1,0 +1,19 @@
+packages:
+  - packages/shared
+  - packages/engine
+  - packages/workers
+  - packages/ui
+  - apps/*
+  # CLI temporarily excluded pending TypeScript fixes
+
+auto-install-peers: true
+
+ignoredBuiltDependencies:
+  - better-sqlite3
+  - esbuild
+
+prefer-workspace-packages: true
+
+shared-workspace-lockfile: true
+
+strict-peer-dependencies: false

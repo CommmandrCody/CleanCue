@@ -1,0 +1,12 @@
+{
+  "name": "@cleancue/workers",
+  "version": "0.1.0",
+  "description": "Python analysis workers for CleanCue",
+  "private": true,
+  "scripts": {
+    "install-python": "pip install -r requirements.txt",
+    "dev": "echo 'Python workers ready'",
+    "clean": "find src -name '*.pyc' -delete && find src -name '__pycache__' -type d -exec rm -rf {} +",
+    "test": "python -m pytest tests/ -v"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "removeComments": false,
+    "noEmitOnError": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cleancue/shared": ["./packages/shared/src"],
+      "@cleancue/engine": ["./packages/engine/src"],
+      "@cleancue/cli": ["./packages/cli/src"],
+      "@cleancue/ui": ["./packages/ui/src"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "apps/*/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "packages/*/dist",
+    "apps/*/dist",
+    "packages/workers"
+  ],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/engine" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/desktop" }
+  ]
+}

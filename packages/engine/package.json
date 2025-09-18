@@ -1,0 +1,44 @@
+{
+  "name": "@cleancue/engine",
+  "version": "0.1.0",
+  "description": "Core CleanCue engine for audio library management",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@cleancue/shared": "workspace:*",
+    "fast-glob": "^3.3.2",
+    "music-metadata": "^11.8.3",
+    "sql.js": "^1.13.0",
+    "sqlite3": "^5.1.7",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.14",
+    "@types/sql.js": "^1.4.9",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "optionalDependencies": {
+    "xxhash-wasm": "^1.0.2"
+  }
+}

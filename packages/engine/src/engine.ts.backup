@@ -1,0 +1,356 @@
+import { CleanCueDatabase } from './database.js';
+import { FileScanner } from './scanner.js';
+import { WorkerPool } from './workers.js';
+import { EventBus } from './events.js';
+import { ConfigManager } from './config.js';
+import type { 
+  Track, Analysis, ScanResult, HealthReport, ExportOptions, 
+  ExportFormat, CleanCueEvent, CuePoint, Config 
+} from '@cleancue/shared';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+export class CleanCueEngine {
+  private db: CleanCueDatabase;
+  private scanner: FileScanner;
+  private workerPool: WorkerPool;
+  private events: EventBus;
+  private config: ConfigManager;
+
+  constructor(configPath?: string) {
+    this.config = new ConfigManager(configPath);
+    this.db = new CleanCueDatabase(this.config.get('database.path'));
+    this.scanner = new FileScanner(this.config.get('scanning'));
+    this.workerPool = new WorkerPool(this.config.get('workers'));
+    this.events = new EventBus();
+
+    this.setupEventHandlers();
+  }
+
+  private setupEventHandlers() {
+    // Forward worker events through main event bus
+    this.workerPool.on('job:started', (data) => {
+      this.events.emit('analysis:started', data);
+    });
+
+    this.workerPool.on('job:progress', (data) => {
+      this.events.emit('analysis:progress', data);
+    });
+
+    this.workerPool.on('job:completed', (data) => {
+      this.events.emit('analysis:completed', data);
+    });
+  }
+
+ on<T extends CleanCueEvent>(event: T['type'], handler: (data: T['data']) => void): void {
+    this.events.on(event, handler);
+  }
+
+  off(event: string, handler: (...args: any[]) => void): void {
+    this.events.off(event, handler);
+  }
+  off(event: string, handler: (...args: any[]) => void): void {
+    this.events.off(event, handler);
+  }
+
+  // Library scanning
+  async scanLibrary(paths: string[]): Promise<ScanResult> {
+    this.events.emit('scan:started', { paths });
+
+    const result: ScanResult = {
+      tracksScanned: 0,
+      tracksAdded: 0,
+      tracksUpdated: 0,
+      errors: []
+    };
+
+    try {
+      const files = await this.scanner.scanPaths(paths);
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        this.events.emit('scan:progress', {
+          current: i + 1,
+          total: files.length,
+          currentFile: file.path
+        });
+
+        try {
+          const existingTrack = this.db.getTrackByPath(file.path);
+          
+          if (existingTrack) {
+            // Check if file has been modified
+            if (existingTrack.fileModifiedAt.getTime() !== file.modifiedAt.getTime()) {
+              // Re-analyze the file
+              const updatedMetadata = await this.scanner.extractMetadata(file.path);
+              this.db.updateTrack(existingTrack.id, {
+                ...updatedMetadata,
+                fileModifiedAt: file.modifiedAt,
+                updatedAt: new Date()
+              });
+              result.tracksUpdated++;
+            }
+          } else {
+            // Check for duplicates by hash
+            const duplicates = this.db.getTrackByHash(file.hash);
+            
+            if (duplicates.length === 0) {
+              // New unique track
+              const metadata = await this.scanner.extractMetadata(file.path);
+              await this.db.insertTrack({
+                path: file.path,
+                hash: file.hash,
+                filename: path.basename(file.path),
+                extension: path.extname(file.path).toLowerCase(),
+                sizeBytes: file.sizeBytes,
+                fileModifiedAt: file.modifiedAt,
+                ...metadata
+              });
+              result.tracksAdded++;
+            } else {
+              // Duplicate found - still add but mark as duplicate
+              const metadata = await this.scanner.extractMetadata(file.path);
+              await this.db.insertTrack({
+                path: file.path,
+                hash: file.hash,
+                filename: path.basename(file.path),
+                extension: path.extname(file.path).toLowerCase(),
+                sizeBytes: file.sizeBytes,
+                fileModifiedAt: file.modifiedAt,
+                ...metadata
+              });
+              result.tracksAdded++;
+            }
+          }
+
+          result.tracksScanned++;
+        } catch (error) {
+          result.errors.push({
+            path: file.path,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+    } catch (error) {
+      result.errors.push({
+        path: 'scan_operation',
+        error: error instanceof Error ? error.message : 'Failed to scan library'
+      });
+    }
+
+    this.events.emit('scan:completed', result);
+    return result;
+  }
+
+  // Track analysis
+  async analyzeTrack(trackId: string, analyzers: string[] = ['tempo', 'key']): Promise<void> {
+    const track = this.db.getTrack(trackId);
+    if (!track) {
+      throw new Error(`Track not found: ${trackId}`);
+    }
+
+    // Check if file still exists
+    try {
+      await fs.access(track.path);
+    } catch {
+      throw new Error(`Track file not found: ${track.path}`);
+    }
+
+    const enabledAnalyzers = this.config.get('analyzers');
+    const activeAnalyzers = analyzers.filter(name => enabledAnalyzers[name]?.enabled);
+
+    for (const analyzerName of activeAnalyzers) {
+      const analyzerConfig = enabledAnalyzers[analyzerName];
+      
+      // Create pending analysis record
+      const analysis = await this.db.insertAnalysis({
+        trackId,
+        analyzerName,
+        analyzerVersion: '1.0.0', // TODO: Get from analyzer
+        parameters: analyzerConfig.parameters || {},
+        results: {},
+        status: 'pending'
+      });
+
+      // Submit job to worker pool
+      await this.workerPool.submitJob({
+        id: analysis.id,
+        trackId,
+        audioPath: track.path,
+        analyzer: analyzerName,
+        parameters: analyzerConfig.parameters || {}
+      });
+    }
+  }
+
+  async analyzeLibrary(analyzers?: string[]): Promise<void> {
+    const tracks = this.db.getAllTracks();
+    
+    for (const track of tracks) {
+      try {
+        await this.analyzeTrack(track.id, analyzers);
+      } catch (error) {
+        console.warn(`Failed to analyze track ${track.path}:`, error);
+      }
+    }
+  }
+
+  // Cue point generation
+  async generateCues(trackId: string): Promise<CuePoint[]> {
+    const track = this.db.getTrack(trackId);
+    if (!track) {
+      throw new Error(`Track not found: ${trackId}`);
+    }
+
+    // Get analysis results for cue generation
+    const analyses = this.db.getAnalysesByTrack(trackId);
+    const tempoAnalysis = analyses.find(a => a.analyzerName === 'tempo' && a.status === 'completed');
+
+    if (!tempoAnalysis) {
+      throw new Error('Track must be analyzed for tempo before generating cues');
+    }
+
+    const cues: CuePoint[] = [];
+
+    // Generate basic cues based on analysis
+    if (track.durationMs) {
+      // Intro cue (8 bars or 16 seconds, whichever is shorter)
+      const introDuration = Math.min(16000, track.durationMs * 0.1);
+      cues.push(await this.db.insertCue({
+        trackId,
+        type: 'intro',
+        positionMs: 0,
+        label: 'Intro',
+        confidence: 1.0
+      }));
+
+      // Outro cue (last 16 seconds or 10% of track)
+      const outroDuration = Math.min(16000, track.durationMs * 0.1);
+      cues.push(await this.db.insertCue({
+        trackId,
+        type: 'outro',
+        positionMs: track.durationMs - outroDuration,
+        label: 'Outro',
+        confidence: 1.0
+      }));
+
+      // Drop cue (rough estimate at 1/4 through track)
+      const dropPosition = Math.floor(track.durationMs * 0.25);
+      cues.push(await this.db.insertCue({
+        trackId,
+        type: 'drop',
+        positionMs: dropPosition,
+        label: 'Drop',
+        confidence: 0.8
+      }));
+    }
+
+    return cues;
+  }
+
+  // Health check
+  async runDoctor(): Promise<HealthReport> {
+    const tracks = this.db.getAllTracks();
+    const issues = this.db.getHealthIssues();
+
+    // Add file system checks
+    for (const track of tracks) {
+      try {
+        await fs.access(track.path);
+      } catch {
+        issues.push({
+          trackId: track.id,
+          path: track.path,
+          type: 'missing_file',
+          severity: 'error',
+          message: 'File no longer exists on disk'
+        });
+      }
+    }
+
+    return {
+      totalTracks: tracks.length,
+      issues
+    };
+  }
+
+  // Export functionality
+  async exportLibrary(format: ExportFormat, options: ExportOptions): Promise<void> {
+    this.events.emit('export:started', { 
+      format: format.name, 
+      trackCount: this.db.getAllTracks().length 
+    });
+
+    const tracks = options.playlistIds?.length 
+      ? this.getTracksFromPlaylists(options.playlistIds)
+      : this.db.getAllTracks();
+
+    if (format.name === 'm3u' || format.name === 'serato' || format.name === 'engine') {
+      await this.exportM3U(tracks, options);
+    }
+
+    this.events.emit('export:completed', { outputPath: options.outputPath });
+  }
+
+  private getTracksFromPlaylists(playlistIds: string[]): Track[] {
+    return this.db.getAllTracks();
+  }
+
+  private async exportM3U(tracks: Track[], options: ExportOptions): Promise<void> {
+    const lines: string[] = ['#EXTM3U'];
+
+    for (const track of tracks) {
+      const duration = track.durationMs ? Math.round(track.durationMs / 1000) : -1;
+      const artist = track.artist || 'Unknown Artist';
+      const title = track.title || track.filename;
+      
+      lines.push(`#EXTINF:${duration},${artist} - ${title}`);
+      
+      const trackPath = options.relativePaths 
+        ? path.relative(path.dirname(options.outputPath), track.path)
+        : track.path;
+        
+      lines.push(trackPath);
+      
+      if (options.includeCues) {
+        const cues = this.db.getCuesByTrack(track.id);
+        for (const cue of cues) {
+          const cueTimeSeconds = Math.round(cue.positionMs / 1000);
+          lines.push(`#EXTCUE:${cueTimeSeconds}:${cue.type}:${cue.label || ''}`);
+        }
+      }
+    }
+
+    await fs.writeFile(options.outputPath, lines.join('\n'), 'utf8');
+  }
+
+  getConfig(): Config {
+    return this.config.getAll();
+  }
+
+  updateConfig(updates: Partial<Config>): void {
+    this.config.update(updates);
+  }
+
+  getAllTracks(): Track[] {
+    return this.db.getAllTracks();
+  }
+
+  getTrack(id: string): Track | null {
+    return this.db.getTrack(id);
+  }
+
+  getAnalysesByTrack(trackId: string): Analysis[] {
+    return this.db.getAnalysesByTrack(trackId);
+  }
+
+  getCuesByTrack(trackId: string): CuePoint[] {
+    return this.db.getCuesByTrack(trackId);
+  }
+
+  close(): void {
+    this.workerPool.close();
+    this.db.close();
+  }
+}

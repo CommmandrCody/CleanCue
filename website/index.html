@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CleanCue - DJ Library Freedom | CmndrCody</title>
+    <meta name="description" content="Free, open-source DJ library management toolkit. Break free from vendor lock-in. Analyze once, export everywhere. Built by DJs, for DJs.">
+    <meta name="keywords" content="DJ software, music library, Serato, Traktor, Engine DJ, Rekordbox, BPM detection, key detection">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cmdrcody.com/cleancue">
+    <meta property="og:title" content="CleanCue - DJ Library Freedom">
+    <meta property="og:description" content="Free DJ library management toolkit. Break free from vendor lock-in. Built for DJs with limited time and money.">
+    <meta property="og:image" content="https://cmdrcody.com/cleancue/assets/cleancue-social.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://cmdrcody.com/cleancue">
+    <meta property="twitter:title" content="CleanCue - DJ Library Freedom">
+    <meta property="twitter:description" content="Free DJ library management toolkit. Break free from vendor lock-in. Built for DJs with limited time and money.">
+    <meta property="twitter:image" content="https://cmdrcody.com/cleancue/assets/cleancue-social.png">
+
+    <link rel="icon" href="assets/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="css/main.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="nav-logo">🎧</span>
+                <span class="nav-title">CleanCue</span>
+                <span class="nav-subtitle">by CmndrCody</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#download" class="nav-link">Download</a>
+                <a href="#docs" class="nav-link">Docs</a>
+                <a href="#about" class="nav-link">About</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    DJ Library <span class="gradient-text">Freedom</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Break free from vendor lock-in. Analyze once, export everywhere.
+                    <br>Professional DJ library management without the professional price tag.
+                </p>
+                <div class="hero-badges">
+                    <span class="badge badge-free">100% Free</span>
+                    <span class="badge badge-open">Open Source</span>
+                    <span class="badge badge-cross">Cross-Platform</span>
+                </div>
+                <div class="hero-cta">
+                    <a href="#download" class="btn btn-primary btn-large">
+                        Download CleanCue
+                        <span class="btn-icon">⬇️</span>
+                    </a>
+                    <a href="https://github.com/CommmandrCody/CleanCue" class="btn btn-secondary btn-large" target="_blank">
+                        View on GitHub
+                        <span class="btn-icon">→</span>
+                    </a>
+                </div>
+                <p class="hero-note">
+                    <strong>For DJs who have limited time and money</strong>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="problem">
+        <div class="container">
+            <div class="problem-content">
+                <h2 class="section-title">Tired of DJ Software Vendor Lock-In?</h2>
+                <div class="problem-grid">
+                    <div class="problem-item">
+                        <div class="problem-icon">😤</div>
+                        <h3>Trapped in One Ecosystem</h3>
+                        <p>Spend months analyzing tracks in Serato, then can't easily move to Engine DJ without starting over.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">💸</div>
+                        <h3>Expensive Professional Tools</h3>
+                        <p>Professional DJ library management costs hundreds of dollars per year in subscriptions.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">⏰</div>
+                        <h3>Time-Consuming Workflows</h3>
+                        <p>Re-analyzing the same tracks multiple times across different DJ software platforms.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">🔒</div>
+                        <h3>Proprietary Formats</h3>
+                        <p>Your BPM and key analysis data is locked into specific software formats.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2 class="section-title">One Tool, All DJ Software</h2>
+            <p class="section-subtitle">Analyze your music library once, then export to any DJ platform you want.</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Smart Audio Analysis</h3>
+                    <ul>
+                        <li>Accurate BPM detection using librosa</li>
+                        <li>Musical key detection (Camelot wheel notation)</li>
+                        <li>Energy & volume analysis</li>
+                        <li>DJ-optimized metadata parsing</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🎛️</div>
+                    <h3>Universal Export System</h3>
+                    <ul>
+                        <li><strong>M3U Playlists</strong> - Universal format</li>
+                        <li><strong>Serato DJ</strong> - Native crate format</li>
+                        <li><strong>Engine DJ</strong> - XML with cue points</li>
+                        <li><strong>Rekordbox</strong> - Pioneer XML format</li>
+                        <li><strong>Traktor Pro</strong> - NML with metadata</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Duplicate Detection</h3>
+                    <ul>
+                        <li>Audio fingerprinting analysis</li>
+                        <li>Confidence scoring system</li>
+                        <li>Side-by-side comparison</li>
+                        <li>Smart keep/remove recommendations</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🏥</div>
+                    <h3>Library Health</h3>
+                    <ul>
+                        <li>Missing file detection</li>
+                        <li>Quality assessment tools</li>
+                        <li>Metadata issue identification</li>
+                        <li>Batch repair utilities</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download">
+        <div class="container">
+            <h2 class="section-title">Download CleanCue</h2>
+            <p class="section-subtitle">Choose your platform and start freeing your music library</p>
+
+            <div class="download-grid">
+                <div class="download-card">
+                    <div class="download-icon">🍎</div>
+                    <h3>macOS</h3>
+                    <p>macOS 10.14+ (Intel & Apple Silicon)</p>
+                    <div class="download-buttons">
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases/download/v0.1.0/CleanCue-0.1.0.dmg" class="btn btn-download">
+                            Intel Mac (183MB)
+                        </a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases/download/v0.1.0/CleanCue-0.1.0-arm64.dmg" class="btn btn-download">
+                            Apple Silicon (183MB)
+                        </a>
+                    </div>
+                </div>
+
+                <div class="download-card">
+                    <div class="download-icon">🪟</div>
+                    <h3>Windows</h3>
+                    <p>Windows 7/10/11 (32-bit & 64-bit)</p>
+                    <div class="download-buttons">
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases/download/v0.1.0/CleanCue-0.1.0-x64.exe" class="btn btn-download">
+                            64-bit (151MB)
+                        </a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases/download/v0.1.0/CleanCue-0.1.0-ia32.exe" class="btn btn-download">
+                            32-bit (146MB)
+                        </a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases/download/v0.1.0/CleanCue-0.1.0.exe" class="btn btn-download">
+                            Universal (297MB)
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="download-note">
+                <p>
+                    <strong>System Requirements:</strong> 4GB RAM (8GB recommended) • 500MB storage + music library cache
+                </p>
+                <p>
+                    <strong>All downloads are free and include:</strong> No subscriptions • No feature limits • No vendor lock-in
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section class="use-cases">
+        <div class="container">
+            <h2 class="section-title">Perfect For Every DJ</h2>
+            <div class="use-cases-grid">
+                <div class="use-case">
+                    <h3>🎪 Festival DJs</h3>
+                    <p>Export to multiple formats for backup and collaboration with other DJs on different systems.</p>
+                </div>
+                <div class="use-case">
+                    <h3>📱 Mobile DJs</h3>
+                    <p>Quickly organize large collections, detect duplicates, and create USB-ready libraries.</p>
+                </div>
+                <div class="use-case">
+                    <h3>📻 Radio DJs</h3>
+                    <p>Analyze energy levels and harmonic keys for seamless transitions and professional mixes.</p>
+                </div>
+                <div class="use-case">
+                    <h3>🏟️ Club DJs</h3>
+                    <p>Maintain clean, organized libraries with consistent metadata across all your software.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about">
+        <div class="container">
+            <div class="about-content">
+                <div class="about-text">
+                    <h2 class="section-title">Built by a DJ, for DJs</h2>
+                    <p class="about-description">
+                        CleanCue was created by <strong>CmndrCody</strong>, a working DJ who got frustrated with being locked into one software ecosystem.
+                        After spending months analyzing tracks in one platform, switching to another meant starting over from scratch.
+                    </p>
+                    <p class="about-description">
+                        This tool exists because <strong>every DJ deserves professional library management tools, regardless of budget</strong>.
+                        Whether you're a bedroom DJ or playing festivals, your music library should work with whatever software you choose.
+                    </p>
+                    <div class="about-mission">
+                        <h3>💪 Mission</h3>
+                        <p><em>"Save time and money for DJs who have little of both"</em></p>
+                    </div>
+                    <div class="about-links">
+                        <a href="https://cmdrcody.com" class="btn btn-outline">CmndrCody.com</a>
+                        <a href="https://soundcloud.com/cmdrcody" class="btn btn-outline" target="_blank">SoundCloud</a>
+                        <a href="https://twitter.com/CmndrCody" class="btn btn-outline" target="_blank">Twitter</a>
+                    </div>
+                </div>
+                <div class="about-stats">
+                    <div class="stat">
+                        <div class="stat-number">5</div>
+                        <div class="stat-label">DJ Software Formats</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">100%</div>
+                        <div class="stat-label">Free & Open Source</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">0</div>
+                        <div class="stat-label">Subscriptions Required</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <h3>🎧 CleanCue</h3>
+                    <p>DJ Library Freedom</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Project</h4>
+                        <a href="https://github.com/CommmandrCody/CleanCue" target="_blank">GitHub</a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/releases" target="_blank">Releases</a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/issues" target="_blank">Bug Reports</a>
+                        <a href="https://github.com/CommmandrCody/CleanCue/wiki" target="_blank">Documentation</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <a href="https://github.com/CommmandrCody/CleanCue/discussions" target="_blank">Discussions</a>
+                        <a href="https://twitter.com/CmndrCody" target="_blank">Twitter</a>
+                        <a href="mailto:cody@cmdrcody.com">Contact</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>CmndrCody</h4>
+                        <a href="https://cmdrcody.com">Website</a>
+                        <a href="https://soundcloud.com/cmdrcody" target="_blank">SoundCloud</a>
+                        <a href="https://github.com/CommmandrCody" target="_blank">GitHub Profile</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 CmndrCody. CleanCue is open source under the MIT License.</p>
+                <p><em>Built for DJs who have limited time and money</em> 🎵</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

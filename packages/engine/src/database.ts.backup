@@ -1,0 +1,433 @@
+import initSqlJs from 'sql.js';
+import type { Track, Analysis, CuePoint, Playlist, PlaylistTrack, HealthIssue } from '@cleancue/shared';
+import { v4 as uuid } from 'uuid';
+import { promises as fs } from 'fs';
+
+export class CleanCueDatabase {
+  private db: any;
+  private dbPath: string;
+
+  constructor(dbPath: string) {
+    this.dbPath = dbPath;
+  }
+
+  async init() {
+    const SQL = await initSqlJs();
+    
+    try {
+      // Try to load existing database
+      const fileBuffer = await fs.readFile(this.dbPath);
+      this.db = new SQL.Database(new Uint8Array(fileBuffer));
+    } catch (error) {
+      // Create new database if file doesn't exist
+      this.db = new SQL.Database();
+      this.createTables();
+      await this.save();
+    }
+  }
+
+  private createTables() {
+    // Create tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tracks (
+        id TEXT PRIMARY KEY,
+        path TEXT UNIQUE NOT NULL,
+        hash TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        extension TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        
+        -- Audio metadata from ffprobe
+        duration_ms INTEGER,
+        sample_rate INTEGER,
+        bit_rate INTEGER,
+        codec TEXT,
+        
+        -- ID3/Vorbis tags
+        title TEXT,
+        artist TEXT,
+        album TEXT,
+        genre TEXT,
+        year INTEGER,
+        track_number INTEGER,
+        
+        -- Timestamps
+        file_modified_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS analyses (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        analyzer_name TEXT NOT NULL,
+        analyzer_version TEXT NOT NULL,
+        parameters TEXT NOT NULL,
+        results TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        started_at INTEGER,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cues (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        position_ms INTEGER NOT NULL,
+        label TEXT,
+        color TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS playlists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS playlist_tracks (
+        playlist_id TEXT NOT NULL,
+        track_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (playlist_id, track_id)
+      );
+
+      -- Indexes for performance
+      CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash);
+      CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);
+      CREATE INDEX IF NOT EXISTS idx_analyses_track_analyzer ON analyses(track_id, analyzer_name);
+      CREATE INDEX IF NOT EXISTS idx_cues_track_id ON cues(track_id);
+      CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_id ON playlist_tracks(playlist_id);
+    `);
+  }
+
+  private async save() {
+    const data = this.db.export();
+    const buffer = new Buffer(data);
+    await fs.writeFile(this.dbPath, buffer);
+  }
+
+  // Track operations
+  async insertTrack(track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>): Promise<Track> {
+    if (!this.db) await this.init();
+    
+    const id = uuid();
+    const now = Date.now();
+    
+    const stmt = this.db.prepare(`
+      INSERT INTO tracks (
+        id, path, hash, filename, extension, size_bytes,
+        duration_ms, sample_rate, bit_rate, codec,
+        title, artist, album, genre, year, track_number,
+        file_modified_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run([
+      id, track.path, track.hash, track.filename, track.extension, track.sizeBytes,
+      track.durationMs, track.sampleRate, track.bitRate, track.codec,
+      track.title, track.artist, track.album, track.genre, track.year, track.trackNumber,
+      track.fileModifiedAt.getTime(), now, now
+    ]);
+
+    await this.save();
+    return this.getTrack(id)!;
+  }
+
+  getTrack(id: string): Track | null {
+    if (!this.db) return null;
+    
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE id = ?');
+    const result = stmt.get([id]);
+    
+    if (!result) return null;
+    
+    return this.mapTrackRow(result);
+  }
+
+  getTrackByPath(path: string): Track | null {
+    if (!this.db) return null;
+    
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE path = ?');
+    const result = stmt.get([path]);
+    
+    if (!result) return null;
+    
+    return this.mapTrackRow(result);
+  }
+
+  getTrackByHash(hash: string): Track[] {
+    if (!this.db) return [];
+    
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE hash = ?');
+    const results = stmt.all([hash]);
+    
+    return results.map((row: any) => this.mapTrackRow(row));
+  }
+
+  updateTrack(id: string, updates: Partial<Track>): void {
+    if (!this.db) return;
+    
+    const setClause = Object.keys(updates)
+      .filter(key => key !== 'id' && key !== 'createdAt')
+      .map(key => `${this.camelToSnake(key)} = ?`)
+      .join(', ');
+    
+    if (!setClause) return;
+
+    const values = Object.entries(updates)
+      .filter(([key]) => key !== 'id' && key !== 'createdAt')
+      .map(([key, value]) => {
+        if (value instanceof Date) return value.getTime();
+        return value;
+      });
+
+    const stmt = this.db.prepare(`UPDATE tracks SET ${setClause}, updated_at = ? WHERE id = ?`);
+    stmt.run([...values, Date.now(), id]);
+    this.save();
+  }
+
+  getAllTracks(): Track[] {
+    if (!this.db) return [];
+    
+    const stmt = this.db.prepare('SELECT * FROM tracks ORDER BY created_at DESC');
+    const results = stmt.all([]);
+    
+    return results.map((row: any) => this.mapTrackRow(row));
+  }
+
+  // Analysis operations
+  async insertAnalysis(analysis: Omit<Analysis, 'id' | 'createdAt'>): Promise<Analysis> {
+    if (!this.db) await this.init();
+    
+    const id = uuid();
+    const now = Date.now();
+    
+    const stmt = this.db.prepare(`
+      INSERT INTO analyses (
+        id, track_id, analyzer_name, analyzer_version,
+        parameters, results, status, error_message,
+        started_at, completed_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run([
+      id, analysis.trackId, analysis.analyzerName, analysis.analyzerVersion,
+      JSON.stringify(analysis.parameters), JSON.stringify(analysis.results),
+      analysis.status, analysis.errorMessage,
+      analysis.startedAt?.getTime(), analysis.completedAt?.getTime(),
+      now
+    ]);
+
+    await this.save();
+    return this.getAnalysis(id)!;
+  }
+
+  getAnalysis(id: string): Analysis | null {
+    if (!this.db) return null;
+    
+    const stmt = this.db.prepare('SELECT * FROM analyses WHERE id = ?');
+    const result = stmt.get([id]);
+    
+    if (!result) return null;
+    
+    return this.mapAnalysisRow(result);
+  }
+
+  getAnalysesByTrack(trackId: string): Analysis[] {
+    if (!this.db) return [];
+    
+    const stmt = this.db.prepare('SELECT * FROM analyses WHERE track_id = ? ORDER BY created_at DESC');
+    const results = stmt.all([trackId]);
+    
+    return results.map((row: any) => this.mapAnalysisRow(row));
+  }
+
+  updateAnalysis(id: string, updates: Partial<Analysis>): void {
+    if (!this.db) return;
+    
+    const setClause = Object.keys(updates)
+      .filter(key => key !== 'id' && key !== 'trackId' && key !== 'createdAt')
+      .map(key => `${this.camelToSnake(key)} = ?`)
+      .join(', ');
+    
+    if (!setClause) return;
+
+    const values = Object.entries(updates)
+      .filter(([key]) => key !== 'id' && key !== 'trackId' && key !== 'createdAt')
+      .map(([key, value]) => {
+        if (key === 'parameters' || key === 'results') {
+          return JSON.stringify(value);
+        }
+        if (value instanceof Date) return value.getTime();
+        return value;
+      });
+
+    const stmt = this.db.prepare(`UPDATE analyses SET ${setClause} WHERE id = ?`);
+    stmt.run([...values, id]);
+    this.save();
+  }
+
+  // Cue operations
+  async insertCue(cue: Omit<CuePoint, 'id' | 'createdAt'>): Promise<CuePoint> {
+    if (!this.db) await this.init();
+    
+    const id = uuid();
+    const now = Date.now();
+    
+    const stmt = this.db.prepare(`
+      INSERT INTO cues (id, track_id, type, position_ms, label, color, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run([id, cue.trackId, cue.type, cue.positionMs, cue.label, cue.color, now]);
+
+    await this.save();
+    return this.getCue(id)!;
+  }
+
+  getCue(id: string): CuePoint | null {
+    if (!this.db) return null;
+    
+    const stmt = this.db.prepare('SELECT * FROM cues WHERE id = ?');
+    const result = stmt.get([id]);
+    
+    if (!result) return null;
+    
+    return this.mapCueRow(result);
+  }
+
+  getCuesByTrack(trackId: string): CuePoint[] {
+    if (!this.db) return [];
+    
+    const stmt = this.db.prepare('SELECT * FROM cues WHERE track_id = ? ORDER BY position_ms ASC');
+    const results = stmt.all([trackId]);
+    
+    return results.map((row: any) => this.mapCueRow(row));
+  }
+
+  // Health check operations
+  getHealthIssues(): HealthIssue[] {
+    if (!this.db) return [];
+    
+    const issues: HealthIssue[] = [];
+    
+    // Find tracks that are too short
+    const shortTracks = this.db.prepare(`
+      SELECT id, path FROM tracks WHERE duration_ms < 30000 AND duration_ms IS NOT NULL
+    `).all([]);
+    
+    shortTracks.forEach((track: any) => {
+      issues.push({
+        trackId: track.id,
+        path: track.path,
+        type: 'too_short',
+        severity: 'warning',
+        message: 'Track is shorter than 30 seconds'
+      });
+    });
+
+    // Find tracks with no metadata
+    const noMetadata = this.db.prepare(`
+      SELECT id, path FROM tracks 
+      WHERE title IS NULL AND artist IS NULL AND album IS NULL
+    `).all([]);
+    
+    noMetadata.forEach((track: any) => {
+      issues.push({
+        trackId: track.id,
+        path: track.path,
+        type: 'no_metadata',
+        severity: 'info',
+        message: 'Track has no ID3 metadata'
+      });
+    });
+
+    // Find potential duplicates by hash
+    const duplicates = this.db.prepare(`
+      SELECT hash, COUNT(*) as count FROM tracks GROUP BY hash HAVING count > 1
+    `).all([]);
+    
+    duplicates.forEach((dup: any) => {
+      const tracks = this.getTrackByHash(dup.hash);
+      tracks.forEach(track => {
+        issues.push({
+          trackId: track.id,
+          path: track.path,
+          type: 'duplicate',
+          severity: 'info',
+          message: `Potential duplicate (${dup.count} copies found)`
+        });
+      });
+    });
+
+    return issues;
+  }
+
+  // Utility methods
+  private mapTrackRow(row: any): Track {
+    return {
+      id: row.id,
+      path: row.path,
+      hash: row.hash,
+      filename: row.filename,
+      extension: row.extension,
+      sizeBytes: row.size_bytes,
+      durationMs: row.duration_ms,
+      sampleRate: row.sample_rate,
+      bitRate: row.bit_rate,
+      codec: row.codec,
+      title: row.title,
+      artist: row.artist,
+      album: row.album,
+      genre: row.genre,
+      year: row.year,
+      trackNumber: row.track_number,
+      fileModifiedAt: new Date(row.file_modified_at),
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    };
+  }
+
+  private mapAnalysisRow(row: any): Analysis {
+    return {
+      id: row.id,
+      trackId: row.track_id,
+      analyzerName: row.analyzer_name,
+      analyzerVersion: row.analyzer_version,
+      parameters: JSON.parse(row.parameters),
+      results: JSON.parse(row.results),
+      status: row.status,
+      errorMessage: row.error_message,
+      startedAt: row.started_at ? new Date(row.started_at) : undefined,
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      createdAt: new Date(row.created_at)
+    };
+  }
+
+  private mapCueRow(row: any): CuePoint {
+    return {
+      id: row.id,
+      trackId: row.track_id,
+      type: row.type,
+      positionMs: row.position_ms,
+      label: row.label,
+      color: row.color,
+      createdAt: new Date(row.created_at)
+    };
+  }
+
+  private camelToSnake(str: string): string {
+    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  }
+
+  close(): void {
+    if (this.db) {
+      this.save();
+      this.db.close();
+    }
+  }
+}
