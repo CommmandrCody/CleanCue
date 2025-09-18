@@ -214,6 +214,11 @@ export interface CleanCueEventMap {
   'tracks:file:deleted': { trackId: string; path: string };
   'tracks:removed:from:library': { trackId: string };
   'tracks:delete:completed': { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> };
+  'stem:separation:started': { trackId: string; settings: any };
+  'stem:separation:progress': { separationId: string; progress: number };
+  'stem:separation:completed': { separationId: string };
+  'stem:separation:cancelled': { separationId: string };
+  'stem:separation:deleted': { separationId: string };
 }
 
 export type CleanCueEvent = {

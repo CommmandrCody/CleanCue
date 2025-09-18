@@ -99,7 +99,7 @@ export function DuplicateDetection() {
     )
   }
 
-  const handleRemoveSelected = () => {
+  const handleRemoveSelected = async () => {
     const selectedTracks = duplicateGroups
       .filter(group => selectedGroups.includes(group.id))
       .flatMap(group => group.tracks.filter(track => track.selected))

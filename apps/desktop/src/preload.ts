@@ -18,9 +18,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Engine operations
   engineScan: (folderPath: string) => ipcRenderer.invoke('engine-scan', folderPath),
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
+  getAllTracks: () => ipcRenderer.invoke('engine-get-tracks'),
   engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
+  exportTracks: (trackIds: string[], options: any) => ipcRenderer.invoke('engine-export', { trackIds, ...options }),
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
+  getDuplicateGroups: () => ipcRenderer.invoke('engine-get-duplicates'),
+  scanForDuplicates: () => ipcRenderer.invoke('engine-scan-duplicates'),
+  saveAnalysisSettings: (settings: any) => ipcRenderer.invoke('engine-save-analysis-settings', settings),
+  detectDJSoftware: () => ipcRenderer.invoke('engine-detect-dj-software'),
 
   // STEM Separation operations
   stemCheckDependencies: () => ipcRenderer.invoke('stem-check-dependencies'),
@@ -60,9 +66,15 @@ export interface ElectronAPI {
   showItemInFolder: (fullPath: string) => Promise<void>
   engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
+  getAllTracks: () => Promise<any[]>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
+  exportTracks: (trackIds: string[], options: any) => Promise<{ success: boolean; path: string }>
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>
+  getDuplicateGroups: () => Promise<any[]>
+  scanForDuplicates: () => Promise<{ success: boolean }>
+  saveAnalysisSettings: (settings: any) => Promise<{ success: boolean }>
+  detectDJSoftware: () => Promise<{ success: boolean; software: string[] }>
 
   // STEM Separation API
   stemCheckDependencies: () => Promise<{ success: boolean; available: boolean; missingDeps: string[] }>

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { LibraryView } from './components/LibraryView'
 import { ScanDialog } from './components/ScanDialog'
-import { ExportDialog } from './components/ExportDialog'
 import { AnalysisProgress } from './components/AnalysisProgress'
 import { HealthDashboard } from './components/HealthDashboard'
 import { DuplicateDetection } from './components/DuplicateDetection'
@@ -13,12 +12,11 @@ type ViewType = 'library' | 'health' | 'duplicates' | 'analysis'
 function App() {
   const [currentView, setCurrentView] = useState<ViewType>('library')
   const [showScanDialog, setShowScanDialog] = useState(false)
-  const [showExportDialog, setShowExportDialog] = useState(false)
 
   const renderView = () => {
     switch (currentView) {
       case 'library':
-        return <LibraryView onExport={() => setShowExportDialog(true)} />
+        return <LibraryView />
       case 'health':
         return <HealthDashboard />
       case 'duplicates':
@@ -26,7 +24,7 @@ function App() {
       case 'analysis':
         return <AnalysisProgress />
       default:
-        return <LibraryView onExport={() => setShowExportDialog(true)} />
+        return <LibraryView />
     }
   }
 
@@ -49,9 +47,6 @@ function App() {
         <ScanDialog onClose={() => setShowScanDialog(false)} />
       )}
 
-      {showExportDialog && (
-        <ExportDialog onClose={() => setShowExportDialog(false)} />
-      )}
     </div>
   )
 }

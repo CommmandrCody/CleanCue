@@ -332,7 +332,7 @@ export function AnalysisSettings({ isOpen, onClose, settings, onSettingsChange }
                       <h4 className="font-medium">Primary notation</h4>
                       <p className="text-sm text-gray-400">Key notation used throughout CleanCue.</p>
 
-                      {Object.entries(keyNotationExamples).map(([id, { example, description }]) => (
+                      {Object.entries(keyNotationExamples).map(([id, { example, description: _description }]) => (
                         <label key={id} className="flex items-start space-x-3 cursor-pointer">
                           <input
                             type="radio"

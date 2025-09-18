@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  Waveform,
   Music,
   Mic,
-  Drums,
+  Drum,
   Guitar,
   Play,
   Pause,
@@ -12,11 +11,10 @@ import {
   Zap,
   Clock,
   FileAudio,
-  Volume2,
-  VolumeX,
   RotateCcw,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  Activity
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -39,11 +37,16 @@ interface StemTrack {
 }
 
 interface StemSettings {
-  model: 'demucs-v4-hybrid' | 'demucs-v3' | 'spleeter-4stem' | 'spleeter-2stem'
+  model: 'htdemucs' | 'htdemucs_ft' | 'htdemucs_6s' | 'mdx_extra'
   outputFormat: 'wav' | 'flac' | 'mp3'
-  quality: 'standard' | 'high' | 'ultra'
+  quality: 'low' | 'medium' | 'high'
   autoNormalize: boolean
   outputBitrate?: number
+  segments: number
+  overlap: number
+  clipMode: 'rescale' | 'clamp'
+  mp3Bitrate?: number
+  jobs?: number
   fileRenaming: {
     enabled: boolean
     namingPattern: 'original-key' | 'original-key-tempo' | 'key-original' | 'key-tempo-original' | 'tempo-key-original'
@@ -89,42 +92,42 @@ interface StemSettings {
 
 const stemModels = [
   {
-    id: 'spleeter-2stem',
-    name: 'Spleeter 2-Stem',
-    description: 'Fast vocals/accompaniment separation',
-    stems: ['Vocals', 'Accompaniment'],
-    speed: 'Fast',
-    quality: 'Good'
-  },
-  {
-    id: 'spleeter-4stem',
-    name: 'Spleeter 4-Stem',
-    description: 'Vocals, drums, bass, other separation',
+    id: 'htdemucs',
+    name: 'Hybrid Demucs',
+    description: 'High-quality hybrid transformer separation',
     stems: ['Vocals', 'Drums', 'Bass', 'Other'],
     speed: 'Medium',
-    quality: 'Good'
-  },
-  {
-    id: 'demucs-v3',
-    name: 'Demucs v3',
-    description: 'High-quality 4-stem separation',
-    stems: ['Vocals', 'Drums', 'Bass', 'Other'],
-    speed: 'Slow',
     quality: 'Excellent'
   },
   {
-    id: 'demucs-v4',
-    name: 'Demucs v4 Hybrid',
-    description: 'State-of-the-art quality (requires GPU)',
+    id: 'htdemucs_ft',
+    name: 'Hybrid Demucs FT',
+    description: 'Fine-tuned version with improved quality',
     stems: ['Vocals', 'Drums', 'Bass', 'Other'],
-    speed: 'Very Slow',
+    speed: 'Medium',
+    quality: 'Excellent'
+  },
+  {
+    id: 'htdemucs_6s',
+    name: 'Hybrid Demucs 6-Stem',
+    description: 'Extended 6-stem separation including piano',
+    stems: ['Vocals', 'Drums', 'Bass', 'Other', 'Piano', 'Guitar'],
+    speed: 'Slow',
     quality: 'Best'
+  },
+  {
+    id: 'mdx_extra',
+    name: 'MDX Extra',
+    description: 'MDX-based model for specific use cases',
+    stems: ['Vocals', 'Drums', 'Bass', 'Other'],
+    speed: 'Fast',
+    quality: 'Good'
   }
 ]
 
 const stemIcons = {
   vocals: <Mic className="h-4 w-4" />,
-  drums: <Drums className="h-4 w-4" />,
+  drums: <Drum className="h-4 w-4" />,
   bass: <Guitar className="h-4 w-4" />,
   other: <Music className="h-4 w-4" />
 }
@@ -160,6 +163,9 @@ export function StemSeparation() {
         outputFormat: 'wav',
         quality: 'high',
         autoNormalize: true,
+        segments: 4,
+        overlap: 0.25,
+        clipMode: 'rescale',
         fileRenaming: { enabled: false, namingPattern: 'original-key' },
         keyNotation: { primaryNotation: 'camelot', addZeroToSingleDigit: false, extraKeyColumn: 'none', useCamelotInComments: false },
         djSoftwareIntegration: {
@@ -302,12 +308,6 @@ export function StemSeparation() {
     }
   }
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
   const formatProcessingTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000)
     const minutes = Math.floor(seconds / 60)
@@ -324,15 +324,6 @@ export function StemSeparation() {
       case 'error': return 'text-red-400'
       default: return 'text-gray-400'
     }
-  }
-
-  const getQualityBadge = (quality: string) => {
-    const colors = {
-      standard: 'bg-blue-900/20 text-blue-300',
-      high: 'bg-purple-900/20 text-purple-300',
-      ultra: 'bg-gold-900/20 text-gold-300'
-    }
-    return colors[quality as keyof typeof colors] || colors.standard
   }
 
   const completedTracks = tracks.filter(track => track.stemStatus === 'completed')
@@ -374,7 +365,7 @@ export function StemSeparation() {
               </>
             ) : (
               <>
-                <Waveform className="h-4 w-4 inline mr-2" />
+                <Activity className="h-4 w-4 inline mr-2" />
                 Process ({selectedTracks.length})
               </>
             )}
@@ -422,7 +413,7 @@ export function StemSeparation() {
         <div className="divide-y divide-gray-700">
           {loading ? (
             <div className="text-center py-12 text-gray-400">
-              <Waveform className="h-12 w-12 mx-auto mb-4 opacity-50 animate-pulse" />
+              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50 animate-pulse" />
               <p>Loading tracks...</p>
             </div>
           ) : tracks.map((track) => (
@@ -504,7 +495,7 @@ export function StemSeparation() {
               <div className="col-span-2">
                 {track.stems ? (
                   <div className="flex space-x-1">
-                    {Object.entries(track.stems).map(([type, path]) => (
+                    {Object.entries(track.stems).map(([type, _path]) => (
                       <button
                         key={type}
                         onClick={() => handlePlayStem(track.id, type)}
@@ -567,7 +558,7 @@ export function StemSeparation() {
 
         {!loading && tracks.length === 0 && (
           <div className="text-center py-12 text-gray-400">
-            <Waveform className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No tracks found</p>
             <p className="text-sm mt-2">Import some music to get started with STEM separation</p>
           </div>
@@ -596,10 +587,10 @@ export function StemSeparation() {
                   {stemModels.map((model) => (
                     <div
                       key={model.id}
-                      onClick={() => setSettings(prev => ({ ...prev, model: model.id as any }))}
+                      onClick={() => setSettings(prev => prev ? ({ ...prev, model: model.id as any }) : null)}
                       className={clsx(
                         'p-4 border rounded-lg cursor-pointer transition-colors',
-                        settings.model === model.id
+                        settings?.model === model.id
                           ? 'border-primary-500 bg-primary-900/20'
                           : 'border-gray-600 hover:border-gray-500'
                       )}
@@ -636,8 +627,8 @@ export function StemSeparation() {
                   <div>
                     <label className="block text-sm font-medium mb-2">Format</label>
                     <select
-                      value={settings.outputFormat}
-                      onChange={(e) => setSettings(prev => ({ ...prev, outputFormat: e.target.value as any }))}
+                      value={settings?.outputFormat}
+                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, outputFormat: e.target.value as any }) : null)}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
                     >
                       <option value="wav">WAV (Lossless)</option>
@@ -649,8 +640,8 @@ export function StemSeparation() {
                   <div>
                     <label className="block text-sm font-medium mb-2">Quality</label>
                     <select
-                      value={settings.quality}
-                      onChange={(e) => setSettings(prev => ({ ...prev, quality: e.target.value as any }))}
+                      value={settings?.quality}
+                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, quality: e.target.value as any }) : null)}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
                     >
                       <option value="standard">Standard (Faster)</option>
@@ -660,12 +651,12 @@ export function StemSeparation() {
                   </div>
                 </div>
 
-                {settings.outputFormat === 'mp3' && (
+                {settings?.outputFormat === 'mp3' && (
                   <div className="mt-4">
                     <label className="block text-sm font-medium mb-2">Bitrate (kbps)</label>
                     <select
-                      value={settings.outputBitrate}
-                      onChange={(e) => setSettings(prev => ({ ...prev, outputBitrate: parseInt(e.target.value) }))}
+                      value={settings?.outputBitrate}
+                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, outputBitrate: parseInt(e.target.value) }) : null)}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
                     >
                       <option value={128}>128 kbps</option>
@@ -680,8 +671,8 @@ export function StemSeparation() {
                   <label className="flex items-center space-x-2">
                     <input
                       type="checkbox"
-                      checked={settings.autoNormalize}
-                      onChange={(e) => setSettings(prev => ({ ...prev, autoNormalize: e.target.checked }))}
+                      checked={settings?.autoNormalize}
+                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, autoNormalize: e.target.checked }) : null)}
                       className="rounded border-gray-600 bg-gray-700 text-primary-600"
                     />
                     <span className="text-sm">Auto-normalize output levels</span>
