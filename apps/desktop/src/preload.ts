@@ -22,6 +22,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
 
+  // STEM Separation operations
+  stemCheckDependencies: () => ipcRenderer.invoke('stem-check-dependencies'),
+  stemStartSeparation: (trackId: string, settings: any) => ipcRenderer.invoke('stem-start-separation', trackId, settings),
+  stemGetStatus: (separationId: string) => ipcRenderer.invoke('stem-get-status', separationId),
+  stemGetByTrack: (trackId: string) => ipcRenderer.invoke('stem-get-by-track', trackId),
+  stemGetAll: () => ipcRenderer.invoke('stem-get-all'),
+  stemCancel: (separationId: string) => ipcRenderer.invoke('stem-cancel', separationId),
+  stemDelete: (separationId: string) => ipcRenderer.invoke('stem-delete', separationId),
+  stemGetModels: () => ipcRenderer.invoke('stem-get-models'),
+  stemGetDefaultSettings: () => ipcRenderer.invoke('stem-get-default-settings'),
+  stemEstimateTime: (trackId: string, model: string) => ipcRenderer.invoke('stem-estimate-time', trackId, model),
+
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => {
     ipcRenderer.on('scan-library', (_, folderPath) => callback(folderPath))
@@ -51,6 +63,19 @@ export interface ElectronAPI {
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>
+
+  // STEM Separation API
+  stemCheckDependencies: () => Promise<{ success: boolean; available: boolean; missingDeps: string[] }>
+  stemStartSeparation: (trackId: string, settings: any) => Promise<{ success: boolean; separationId: string }>
+  stemGetStatus: (separationId: string) => Promise<{ success: boolean; status: any }>
+  stemGetByTrack: (trackId: string) => Promise<{ success: boolean; result: any }>
+  stemGetAll: () => Promise<{ success: boolean; separations: any[] }>
+  stemCancel: (separationId: string) => Promise<{ success: boolean; cancelled: boolean }>
+  stemDelete: (separationId: string) => Promise<{ success: boolean; deleted: boolean }>
+  stemGetModels: () => Promise<{ success: boolean; models: string[] }>
+  stemGetDefaultSettings: () => Promise<{ success: boolean; settings: any }>
+  stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
+
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
   removeAllListeners: (channel: string) => void

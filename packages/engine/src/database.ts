@@ -65,12 +65,36 @@ export class CleanCueDatabase {
       )
     `);
 
+    // Create stem_separations table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS stem_separations (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        settings TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress REAL DEFAULT 0,
+        vocals_path TEXT,
+        drums_path TEXT,
+        bass_path TEXT,
+        other_path TEXT,
+        processing_time_ms INTEGER,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        FOREIGN KEY (track_id) REFERENCES tracks (id)
+      )
+    `);
+
     // Create indexes
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);
       CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash);
       CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id);
       CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id);
+      CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id);
+      CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status);
     `);
   }
 
@@ -306,6 +330,123 @@ export class CleanCueDatabase {
     }
 
     return issues;
+  }
+
+  // STEM Separation methods
+  async insertStemSeparation(separation: {
+    trackId: string
+    modelName: string
+    modelVersion: string
+    settings: any
+    status: 'pending' | 'processing' | 'completed' | 'error'
+  }) {
+    const id = randomUUID();
+    const now = Date.now();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO stem_separations (
+        id, track_id, model_name, model_version, settings, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      separation.trackId,
+      separation.modelName,
+      separation.modelVersion,
+      JSON.stringify(separation.settings),
+      separation.status,
+      now
+    );
+
+    return id;
+  }
+
+  updateStemSeparation(id: string, updates: {
+    status?: 'pending' | 'processing' | 'completed' | 'error'
+    progress?: number
+    vocalsPath?: string
+    drumsPath?: string
+    bassPath?: string
+    otherPath?: string
+    processingTimeMs?: number
+    errorMessage?: string
+  }) {
+    const updateFields = [];
+    const values = [];
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined) {
+        const columnName = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        updateFields.push(`${columnName} = ?`);
+        values.push(value);
+      }
+    });
+
+    if (updates.status === 'completed') {
+      updateFields.push('completed_at = ?');
+      values.push(Date.now());
+    }
+
+    if (updateFields.length > 0) {
+      values.push(id);
+      const stmt = this.db.prepare(`UPDATE stem_separations SET ${updateFields.join(', ')} WHERE id = ?`);
+      stmt.run(...values);
+    }
+  }
+
+  getStemSeparationByTrackId(trackId: string) {
+    const stmt = this.db.prepare('SELECT * FROM stem_separations WHERE track_id = ? ORDER BY created_at DESC LIMIT 1');
+    const row = stmt.get(trackId) as any;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      trackId: row.track_id,
+      modelName: row.model_name,
+      modelVersion: row.model_version,
+      settings: JSON.parse(row.settings || '{}'),
+      status: row.status,
+      progress: row.progress,
+      vocalsPath: row.vocals_path,
+      drumsPath: row.drums_path,
+      bassPath: row.bass_path,
+      otherPath: row.other_path,
+      processingTimeMs: row.processing_time_ms,
+      errorMessage: row.error_message,
+      createdAt: new Date(row.created_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : null
+    };
+  }
+
+  getAllStemSeparations() {
+    const stmt = this.db.prepare('SELECT * FROM stem_separations ORDER BY created_at DESC');
+    const rows = stmt.all() as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      trackId: row.track_id,
+      modelName: row.model_name,
+      modelVersion: row.model_version,
+      settings: JSON.parse(row.settings || '{}'),
+      status: row.status,
+      progress: row.progress,
+      vocalsPath: row.vocals_path,
+      drumsPath: row.drums_path,
+      bassPath: row.bass_path,
+      otherPath: row.other_path,
+      processingTimeMs: row.processing_time_ms,
+      errorMessage: row.error_message,
+      createdAt: new Date(row.created_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : null
+    }));
+  }
+
+  deleteStemSeparation(id: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM stem_separations WHERE id = ?');
+    const result = stmt.run(id);
+    return result.changes > 0;
   }
 
   close(): void {

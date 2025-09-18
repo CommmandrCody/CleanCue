@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Download, Play, Music, Clock, Key, Zap, Trash2, FolderMinus, X } from 'lucide-react'
 import clsx from 'clsx'
+import { ExportDialog } from './ExportDialog'
 
 interface Track {
   id: string
@@ -16,59 +17,49 @@ interface Track {
   path: string
 }
 
-interface LibraryViewProps {
-  onExport: () => void
-}
+interface LibraryViewProps {}
 
-// Mock data for demo
-const mockTracks: Track[] = [
-  {
-    id: '1',
-    title: 'Feel So Close',
-    artist: 'Calvin Harris',
-    album: 'Motion',
-    genre: 'House',
-    year: 2012,
-    bpm: 128,
-    key: 'A minor',
-    duration: 245,
-    energy: 85,
-    path: '/Music/Calvin Harris - Feel So Close.mp3'
-  },
-  {
-    id: '2',
-    title: 'Strobe',
-    artist: 'Deadmau5',
-    album: 'For Lack of a Better Name',
-    genre: 'Progressive House',
-    year: 2009,
-    bpm: 126,
-    key: 'C# minor',
-    duration: 634,
-    energy: 92,
-    path: '/Music/Deadmau5 - Strobe.mp3'
-  },
-  {
-    id: '3',
-    title: 'In The Name Of Love',
-    artist: 'Martin Garrix feat. Bebe Rexha',
-    album: 'Seven Lions',
-    genre: 'Future House',
-    year: 2016,
-    bpm: 132,
-    key: 'G major',
-    duration: 195,
-    energy: 78,
-    path: '/Music/Martin Garrix - In The Name Of Love.mp3'
-  }
-]
 
-export function LibraryView({ onExport }: LibraryViewProps) {
+export function LibraryView({}: LibraryViewProps) {
+  const [tracks, setTracks] = useState<Track[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedTracks, setSelectedTracks] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
 
-  const filteredTracks = mockTracks.filter(track =>
+  useEffect(() => {
+    loadTracks()
+  }, [])
+
+  const loadTracks = async () => {
+    try {
+      setLoading(true)
+      if (window.electronAPI) {
+        const dbTracks = await window.electronAPI.getAllTracks()
+        const convertedTracks = dbTracks.map((dbTrack: any) => ({
+          id: dbTrack.id,
+          title: dbTrack.title || 'Unknown Title',
+          artist: dbTrack.artist || 'Unknown Artist',
+          album: dbTrack.album,
+          genre: dbTrack.genre,
+          year: dbTrack.year,
+          bpm: dbTrack.analysis?.bpm,
+          key: dbTrack.analysis?.key,
+          duration: dbTrack.durationMs ? Math.floor(dbTrack.durationMs / 1000) : undefined,
+          energy: dbTrack.analysis?.energy,
+          path: dbTrack.path
+        }))
+        setTracks(convertedTracks)
+      }
+    } catch (error) {
+      console.error('Failed to load tracks:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredTracks = tracks.filter(track =>
     track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     track.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
     track.genre?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -106,9 +97,12 @@ export function LibraryView({ onExport }: LibraryViewProps) {
         // Desktop app - call Electron IPC
         await window.electronAPI.deleteTracks(selectedTracks, deleteFiles)
       } else {
-        // Web app - call HTTP API (mock for now)
+        // Web app - call HTTP API
         console.log(`Would delete ${selectedTracks.length} tracks with deleteFiles=${deleteFiles}`)
       }
+
+      // Reload tracks from database to reflect changes
+      await loadTracks()
 
       // Clear selection after successful delete
       setSelectedTracks([])
@@ -124,7 +118,9 @@ export function LibraryView({ onExport }: LibraryViewProps) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Music Library</h2>
-          <p className="text-gray-400">{filteredTracks.length} tracks</p>
+          <p className="text-gray-400">
+            {loading ? 'Loading...' : `${filteredTracks.length} tracks`}
+          </p>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -143,7 +139,7 @@ export function LibraryView({ onExport }: LibraryViewProps) {
           </button>
 
           <button
-            onClick={onExport}
+            onClick={() => setShowExportDialog(true)}
             disabled={selectedTracks.length === 0}
             className={clsx(
               'px-4 py-2 rounded-md text-sm font-medium transition-colors',
@@ -183,7 +179,12 @@ export function LibraryView({ onExport }: LibraryViewProps) {
         </div>
 
         <div className="divide-y divide-gray-700">
-          {filteredTracks.map((track) => (
+          {loading ? (
+            <div className="text-center py-12 text-gray-400">
+              <Music className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
+              <p>Loading tracks...</p>
+            </div>
+          ) : filteredTracks.map((track) => (
             <div
               key={track.id}
               className={clsx(
@@ -259,7 +260,7 @@ export function LibraryView({ onExport }: LibraryViewProps) {
           ))}
         </div>
 
-        {filteredTracks.length === 0 && (
+        {!loading && filteredTracks.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             <Music className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No tracks found</p>
@@ -334,6 +335,14 @@ export function LibraryView({ onExport }: LibraryViewProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Export Dialog */}
+      {showExportDialog && (
+        <ExportDialog
+          onClose={() => setShowExportDialog(false)}
+          selectedTracks={selectedTracks}
+        />
       )}
     </div>
   )

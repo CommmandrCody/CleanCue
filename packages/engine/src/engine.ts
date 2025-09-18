@@ -4,6 +4,7 @@ import { WorkerPool } from './workers.js';
 import { EventBus } from './events.js';
 import { ConfigManager } from './config.js';
 import { USBExporter } from './usb-exporter.js';
+import { StemSeparationService, StemSeparationSettings, StemSeparationResult } from './stem-separation-service.js';
 import type {
   Track, Analysis, ScanResult, HealthReport, ExportOptions,
   ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
@@ -18,6 +19,7 @@ export class CleanCueEngine {
   private events: EventBus;
   private config: ConfigManager;
   private usbExporter: USBExporter;
+  private stemSeparationService: StemSeparationService;
 
   constructor(configPath?: string) {
     this.config = new ConfigManager(configPath);
@@ -26,6 +28,7 @@ export class CleanCueEngine {
     this.workerPool = new WorkerPool(this.config.get('workers'));
     this.events = new EventBus();
     this.usbExporter = new USBExporter();
+    this.stemSeparationService = new StemSeparationService(this.db, this.config.get('stems.outputPath'));
 
     this.setupEventHandlers();
   }
@@ -578,6 +581,86 @@ export class CleanCueEngine {
 
     this.events.emit('tracks:delete:completed', result);
     return result;
+  }
+
+  // STEM Separation functionality
+  async checkStemSeparationDependencies(): Promise<{ available: boolean; missingDeps: string[] }> {
+    return this.stemSeparationService.checkDependencies();
+  }
+
+  async startStemSeparation(trackId: string, settings?: Partial<StemSeparationSettings>): Promise<string> {
+    const track = this.db.getTrack(trackId);
+    if (!track) {
+      throw new Error(`Track not found: ${trackId}`);
+    }
+
+    // Check if file exists
+    try {
+      await fs.access(track.path);
+    } catch {
+      throw new Error(`Track file not found: ${track.path}`);
+    }
+
+    // Use provided settings or defaults
+    const separationSettings = {
+      ...this.stemSeparationService.getDefaultSettings(),
+      ...settings
+    };
+
+    this.events.emit('stem:separation:started', { trackId, settings: separationSettings });
+
+    const separationId = await this.stemSeparationService.startSeparation(
+      trackId,
+      track.path,
+      separationSettings
+    );
+
+    return separationId;
+  }
+
+  async getStemSeparationStatus(separationId: string): Promise<StemSeparationResult | null> {
+    return this.stemSeparationService.getSeparationStatus(separationId);
+  }
+
+  async getStemSeparationByTrackId(trackId: string): Promise<StemSeparationResult | null> {
+    return this.stemSeparationService.getSeparationByTrackId(trackId);
+  }
+
+  async getAllStemSeparations(): Promise<StemSeparationResult[]> {
+    return this.stemSeparationService.getAllSeparations();
+  }
+
+  async cancelStemSeparation(separationId: string): Promise<boolean> {
+    const result = await this.stemSeparationService.cancelSeparation(separationId);
+    if (result) {
+      this.events.emit('stem:separation:cancelled', { separationId });
+    }
+    return result;
+  }
+
+  async deleteStemSeparation(separationId: string): Promise<boolean> {
+    const result = await this.stemSeparationService.deleteSeparation(separationId);
+    if (result) {
+      this.events.emit('stem:separation:deleted', { separationId });
+    }
+    return result;
+  }
+
+  getAvailableStemModels(): Promise<string[]> {
+    return this.stemSeparationService.getAvailableModels();
+  }
+
+  getStemSeparationDefaultSettings(): StemSeparationSettings {
+    return this.stemSeparationService.getDefaultSettings();
+  }
+
+  async estimateStemProcessingTime(trackId: string, model: string): Promise<number> {
+    const track = this.db.getTrack(trackId);
+    if (!track || !track.durationMs) {
+      throw new Error('Track not found or duration unknown');
+    }
+
+    return this.stemSeparationService.estimateProcessingTime(track.durationMs, model);
   }
 
   close(): void {

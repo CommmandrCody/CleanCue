@@ -89,7 +89,6 @@ Complete UI redesign optimized for DJ environments:
 ### Linux
 - **CleanCue-0.2.0.AppImage** (Universal Linux - 192MB)
 - Portable executable compatible with all major distributions
-- No installation required - download and run directly
 
 ## 🐛 Bug Fixes
 
@@ -132,7 +131,7 @@ Complete UI redesign optimized for DJ environments:
 1. Download the appropriate package for your platform
 2. **macOS:** Mount the DMG and drag CleanCue to Applications
 3. **Windows:** Run the installer and follow the setup wizard
-4. **Linux:** Make the AppImage executable (`chmod +x CleanCue-0.2.0.AppImage`) and run directly
+4. **Linux:** Make the AppImage executable and run directly
 
 ### First Use
 1. Launch CleanCue

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Copy,
   Search,
@@ -33,105 +33,45 @@ interface DuplicateTrack {
   selected?: boolean
 }
 
-const mockDuplicateGroups: DuplicateGroup[] = [
-  {
-    id: '1',
-    confidence: 95,
-    reason: 'Identical metadata and similar file size',
-    tracks: [
-      {
-        id: '1a',
-        title: 'Feel So Close',
-        artist: 'Calvin Harris',
-        album: 'Motion',
-        path: '/Music/Calvin Harris - Feel So Close.mp3',
-        fileSize: 8450000,
-        duration: 245,
-        bitrate: 320,
-        dateAdded: '2024-01-15'
-      },
-      {
-        id: '1b',
-        title: 'Feel So Close',
-        artist: 'Calvin Harris',
-        album: 'Motion',
-        path: '/Music/Calvin Harris - Feel So Close (Copy).mp3',
-        fileSize: 8450000,
-        duration: 245,
-        bitrate: 320,
-        dateAdded: '2024-01-20'
-      }
-    ]
-  },
-  {
-    id: '2',
-    confidence: 87,
-    reason: 'Similar title and artist, different quality',
-    tracks: [
-      {
-        id: '2a',
-        title: 'Strobe',
-        artist: 'Deadmau5',
-        album: 'For Lack of a Better Name',
-        path: '/Music/Deadmau5/Strobe.mp3',
-        fileSize: 15200000,
-        duration: 634,
-        bitrate: 192,
-        dateAdded: '2024-01-10'
-      },
-      {
-        id: '2b',
-        title: 'Strobe',
-        artist: 'Deadmau5',
-        album: 'For Lack of a Better Name',
-        path: '/Music/Downloads/deadmau5 - strobe.mp3',
-        fileSize: 20300000,
-        duration: 634,
-        bitrate: 256,
-        dateAdded: '2024-01-25'
-      }
-    ]
-  },
-  {
-    id: '3',
-    confidence: 78,
-    reason: 'Similar metadata, different remix versions',
-    tracks: [
-      {
-        id: '3a',
-        title: 'Levels',
-        artist: 'Avicii',
-        path: '/Music/Avicii - Levels.mp3',
-        fileSize: 7800000,
-        duration: 203,
-        bitrate: 320,
-        dateAdded: '2024-01-05'
-      },
-      {
-        id: '3b',
-        title: 'Levels (Radio Edit)',
-        artist: 'Avicii',
-        path: '/Music/Avicii - Levels (Radio Edit).mp3',
-        fileSize: 6200000,
-        duration: 178,
-        bitrate: 320,
-        dateAdded: '2024-01-12'
-      }
-    ]
-  }
-]
 
 export function DuplicateDetection() {
-  const [duplicateGroups, setDuplicateGroups] = useState(mockDuplicateGroups)
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [scanning, setScanning] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadDuplicates()
+  }, [])
+
+  const loadDuplicates = async () => {
+    try {
+      setLoading(true)
+      if (window.electronAPI) {
+        const duplicates = await window.electronAPI.getDuplicateGroups()
+        setDuplicateGroups(duplicates || [])
+      }
+    } catch (error) {
+      console.error('Failed to load duplicates:', error)
+      setDuplicateGroups([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleScanDuplicates = async () => {
-    setScanning(true)
-    // Simulate duplicate scan
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    setScanning(false)
+    try {
+      setScanning(true)
+      if (window.electronAPI) {
+        const duplicates = await window.electronAPI.scanForDuplicates()
+        setDuplicateGroups(duplicates || [])
+      }
+    } catch (error) {
+      console.error('Failed to scan for duplicates:', error)
+    } finally {
+      setScanning(false)
+    }
   }
 
   const handleSelectGroup = (groupId: string) => {
@@ -166,13 +106,18 @@ export function DuplicateDetection() {
 
     if (selectedTracks.length === 0) return
 
-    // In real app, this would remove tracks from library
-    console.log('Removing tracks:', selectedTracks)
+    try {
+      if (window.electronAPI) {
+        const trackIds = selectedTracks.map(track => track.id)
+        await window.electronAPI.deleteTracks(trackIds, true) // Delete files permanently
 
-    // Remove resolved groups
-    setDuplicateGroups(prev =>
-      prev.filter(group => !selectedGroups.includes(group.id))
-    )
+        // Reload duplicates to reflect changes
+        await loadDuplicates()
+      }
+    } catch (error) {
+      console.error('Failed to remove tracks:', error)
+    }
+
     setSelectedGroups([])
   }
 
@@ -237,12 +182,14 @@ export function DuplicateDetection() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-primary-400">{duplicateGroups.length}</div>
+          <div className="text-2xl font-bold text-primary-400">
+            {loading ? '...' : duplicateGroups.length}
+          </div>
           <div className="text-sm text-gray-400">Duplicate Groups</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-2xl font-bold text-yellow-400">
-            {duplicateGroups.reduce((sum, group) => sum + group.tracks.length, 0)}
+            {loading ? '...' : duplicateGroups.reduce((sum, group) => sum + group.tracks.length, 0)}
           </div>
           <div className="text-sm text-gray-400">Total Duplicates</div>
         </div>
@@ -389,7 +336,12 @@ export function DuplicateDetection() {
         ))}
       </div>
 
-      {duplicateGroups.length === 0 && (
+      {loading ? (
+        <div className="text-center py-12 text-gray-400 bg-gray-800 rounded-lg">
+          <Copy className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
+          <p className="font-medium">Loading duplicates...</p>
+        </div>
+      ) : duplicateGroups.length === 0 && (
         <div className="text-center py-12 text-gray-400 bg-gray-800 rounded-lg">
           <Copy className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p className="font-medium">No duplicates found</p>

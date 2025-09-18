@@ -4,6 +4,7 @@ import clsx from 'clsx'
 
 interface ExportDialogProps {
   onClose: () => void
+  selectedTracks: string[]
 }
 
 interface ExportFormat {
@@ -66,7 +67,7 @@ const exportFormats: ExportFormat[] = [
   }
 ]
 
-export function ExportDialog({ onClose }: ExportDialogProps) {
+export function ExportDialog({ onClose, selectedTracks }: ExportDialogProps) {
   const [selectedFormat, setSelectedFormat] = useState<string>('usb')
   const [exportPath, setExportPath] = useState('')
   const [playlistName, setPlaylistName] = useState('CleanCue Export')
@@ -116,20 +117,43 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   }
 
   const handleExport = async () => {
-    if (!selectedFormat || !exportPath) return
+    if (!selectedFormat || !exportPath || selectedTracks.length === 0) return
 
     setExporting(true)
 
-    // Simulate export process
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    try {
+      if (window.electronAPI) {
+        const exportOptions = {
+          format: selectedFormat,
+          path: exportPath,
+          playlistName,
+          includeMetadata,
+          includeCues,
+          useRelativePaths,
+          usbProfile: selectedFormat === 'usb' ? usbProfile : undefined,
+          filenameTemplate: selectedFormat === 'usb' ? filenameTemplate : undefined,
+          fileAction: selectedFormat === 'usb' ? fileAction : undefined,
+          backupOriginal: selectedFormat === 'usb' ? backupOriginal : undefined
+        }
 
-    setExporting(false)
-    setExportComplete(true)
+        await window.electronAPI.exportTracks(selectedTracks, exportOptions)
 
-    // Auto-close after success
-    setTimeout(() => {
-      onClose()
-    }, 1500)
+        setExporting(false)
+        setExportComplete(true)
+
+        // Auto-close after success
+        setTimeout(() => {
+          onClose()
+        }, 1500)
+      } else {
+        // Web export not implemented
+        console.log('Web export not yet implemented')
+        setExporting(false)
+      }
+    } catch (error) {
+      console.error('Export failed:', error)
+      setExporting(false)
+    }
   }
 
   if (exportComplete) {
@@ -386,7 +410,7 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
         {/* Actions */}
         <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-700">
           <div className="text-sm text-gray-400">
-            Exporting 3 selected tracks
+            Exporting {selectedTracks.length} selected tracks
           </div>
 
           <div className="flex space-x-3">

@@ -359,6 +359,157 @@ class CleanCueApp {
         return { success: false, error: (error as Error).message }
       }
     })
+
+    // STEM Separation IPC handlers
+    ipcMain.handle('stem-check-dependencies', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.checkStemSeparationDependencies()
+        return { success: true, ...result }
+      } catch (error) {
+        console.error('Failed to check STEM dependencies:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-start-separation', async (_, trackId: string, settings: any) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const separationId = await this.engine.startStemSeparation(trackId, settings)
+        return { success: true, separationId }
+      } catch (error) {
+        console.error('Failed to start STEM separation:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-get-status', async (_, separationId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const status = await this.engine.getStemSeparationStatus(separationId)
+        return { success: true, status }
+      } catch (error) {
+        console.error('Failed to get STEM status:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-get-by-track', async (_, trackId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.getStemSeparationByTrackId(trackId)
+        return { success: true, result }
+      } catch (error) {
+        console.error('Failed to get STEM by track:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-get-all', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const separations = await this.engine.getAllStemSeparations()
+        return { success: true, separations }
+      } catch (error) {
+        console.error('Failed to get all STEM separations:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-cancel', async (_, separationId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.cancelStemSeparation(separationId)
+        return { success: true, cancelled: result }
+      } catch (error) {
+        console.error('Failed to cancel STEM separation:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-delete', async (_, separationId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.deleteStemSeparation(separationId)
+        return { success: true, deleted: result }
+      } catch (error) {
+        console.error('Failed to delete STEM separation:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-get-models', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const models = await this.engine.getAvailableStemModels()
+        return { success: true, models }
+      } catch (error) {
+        console.error('Failed to get STEM models:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-get-default-settings', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const settings = this.engine.getStemSeparationDefaultSettings()
+        return { success: true, settings }
+      } catch (error) {
+        console.error('Failed to get default STEM settings:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('stem-estimate-time', async (_, trackId: string, model: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const estimatedTime = await this.engine.estimateStemProcessingTime(trackId, model)
+        return { success: true, estimatedTime }
+      } catch (error) {
+        console.error('Failed to estimate STEM processing time:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
   }
 
 
