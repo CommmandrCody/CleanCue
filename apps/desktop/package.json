@@ -1,6 +1,6 @@
 {
   "name": "@cleancue/desktop",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "CleanCue Desktop Application",
   "homepage": "https://github.com/CommmandrCody/CleanCue",
   "author": "CleanCue Team <team@cleancue.com>",
@@ -22,11 +22,11 @@
   "dependencies": {
     "@cleancue/engine": "workspace:*",
     "@cleancue/shared": "workspace:*",
-    "debug": "^4.4.3",
-    "electron-squirrel-startup": "^1.0.1",
-    "electron-to-chromium": "^1.5.221",
-    "fs-extra": "^11.3.2",
-    "ms": "^2.1.3"
+    "bindings": "^1.5.0",
+    "debug": "^4.3.4",
+    "ms": "^2.1.2",
+    "file-uri-to-path": "^2.0.0",
+    "electron-squirrel-startup": "^1.0.1"
   },
   "devDependencies": {
     "@electron/get": "^4.0.2",
@@ -34,7 +34,7 @@
     "concurrently": "^8.2.2",
     "electron": "^38.1.2",
     "electron-builder": "^24.6.4",
-    "typescript": "^5.2.2"
+    "typescript": "^5.3.0"
   },
   "build": {
     "appId": "com.cleancue.desktop",
@@ -46,6 +46,13 @@
     "files": [
       "dist/**/*",
       "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/node_modules/bindings/**/*",
+      "**/node_modules/file-uri-to-path/**/*",
+      "**/node_modules/debug/**/*",
+      "**/node_modules/ms/**/*"
     ],
     "extraResources": [
       {

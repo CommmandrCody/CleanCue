@@ -48,6 +48,7 @@ export interface ScanConfig {
   followSymlinks: boolean;
   maxFileSize: number;
   hashAlgorithm: string;
+  includeSubdirectories: boolean;
 }
 
 export class FileScanner {
@@ -63,6 +64,7 @@ export class FileScanner {
       followSymlinks: false,
       maxFileSize: 500 * 1024 * 1024, // 500MB
       hashAlgorithm: 'sha256',
+      includeSubdirectories: true,
       ...config
     };
   }
@@ -80,20 +82,30 @@ export class FileScanner {
 
   private async scanPath(scanPath: string): Promise<ScannedFile[]> {
     const files: ScannedFile[] = [];
-    
+
+    console.log(`Scanning path: ${scanPath}`);
+
     try {
       const stat = await fs.stat(scanPath);
-      
+
       if (stat.isFile()) {
+        console.log(`Path is file: ${scanPath}`);
         if (this.isAudioFile(scanPath)) {
+          console.log(`Processing audio file: ${scanPath}`);
           const file = await this.processFile(scanPath, stat);
           if (file) files.push(file);
+        } else {
+          console.log(`File is not audio format: ${scanPath}`);
         }
       } else if (stat.isDirectory()) {
-        files.push(...await this.scanDirectory(scanPath));
+        console.log(`Path is directory, scanning recursively: ${scanPath}`);
+        const dirFiles = await this.scanDirectory(scanPath);
+        console.log(`Found ${dirFiles.length} files in directory: ${scanPath}`);
+        files.push(...dirFiles);
       }
     } catch (error) {
-      console.warn(`Failed to scan ${scanPath}:`, error);
+      console.error(`Failed to scan ${scanPath}:`, error);
+      throw error; // Re-throw to surface the actual error
     }
     
     return files;
@@ -109,13 +121,18 @@ export class FileScanner {
         const fullPath = path.join(dirPath, entry.name);
         
         if (entry.isDirectory()) {
+          // Check if we should include subdirectories
+          if (!this.config.includeSubdirectories) {
+            continue;
+          }
+
           // Skip hidden directories and common ignore patterns
-          if (entry.name.startsWith('.') || 
-              entry.name === 'node_modules' || 
+          if (entry.name.startsWith('.') ||
+              entry.name === 'node_modules' ||
               entry.name === '__pycache__') {
             continue;
           }
-          
+
           files.push(...await this.scanDirectory(fullPath));
         } else if (entry.isFile() || (entry.isSymbolicLink() && this.config.followSymlinks)) {
           if (this.isAudioFile(fullPath)) {
@@ -178,15 +195,18 @@ export class FileScanner {
     const parseFileFn = await getParseFile();
     if (!parseFileFn) {
       console.warn('music-metadata not available, returning empty metadata');
-      return {};
+      return this.extractMetadataFromFilename(filePath);
     }
 
     try {
       const metadata = await parseFileFn(filePath);
-      
+
+      // Extract title and artist from filename if not available in metadata
+      const filenameMetadata = this.extractMetadataFromFilename(filePath);
+
       return {
-        title: metadata.common.title,
-        artist: metadata.common.artist,
+        title: metadata.common.title || filenameMetadata.title,
+        artist: metadata.common.artist || filenameMetadata.artist,
         album: metadata.common.album,
         albumArtist: metadata.common.albumartist,
         genre: metadata.common.genre?.[0],
@@ -194,8 +214,8 @@ export class FileScanner {
         trackNumber: metadata.common.track?.no || undefined,
         discNumber: metadata.common.disk?.no || undefined,
         composer: metadata.common.composer?.[0],
-        comment: typeof metadata.common.comment?.[0] === 'string' 
-          ? metadata.common.comment[0] 
+        comment: typeof metadata.common.comment?.[0] === 'string'
+          ? metadata.common.comment[0]
           : metadata.common.comment?.[0]?.text || undefined,
         durationMs: metadata.format.duration ? Math.round(metadata.format.duration * 1000) : undefined,
         bitrate: metadata.format.bitrate,
@@ -204,8 +224,64 @@ export class FileScanner {
       };
     } catch (error) {
       console.warn(`Failed to extract metadata from ${filePath}:`, error);
-      return {};
+      return this.extractMetadataFromFilename(filePath);
     }
+  }
+
+  private extractMetadataFromFilename(filePath: string): AudioMetadata {
+    const filename = path.basename(filePath, path.extname(filePath));
+
+    // Common patterns for DJ tracks:
+    // "Artist - Title"
+    // "Artist - Title (Remix)"
+    // "01. Artist - Title"
+    // "Artist_-_Title"
+    // "Title"
+
+    let title = filename;
+    let artist: string | undefined;
+
+    // Remove track numbers at the beginning
+    title = title.replace(/^\d+[\.\-\s]+/, '');
+
+    // Check for Artist - Title pattern
+    const dashSplit = title.split(' - ');
+    if (dashSplit.length >= 2) {
+      artist = dashSplit[0].trim();
+      title = dashSplit.slice(1).join(' - ').trim();
+    } else {
+      // Check for Artist_-_Title pattern (common in download filenames)
+      const underscoreDashSplit = title.split('_-_');
+      if (underscoreDashSplit.length >= 2) {
+        artist = underscoreDashSplit[0].trim().replace(/_/g, ' ');
+        title = underscoreDashSplit.slice(1).join('_-_').trim().replace(/_/g, ' ');
+      } else {
+        // Check for other separators
+        const separators = [' by ', ' BY ', ' feat. ', ' ft. ', ' featuring '];
+        for (const sep of separators) {
+          const sepIndex = title.indexOf(sep);
+          if (sepIndex > 0) {
+            artist = title.substring(sepIndex + sep.length).trim();
+            title = title.substring(0, sepIndex).trim();
+            break;
+          }
+        }
+      }
+    }
+
+    // Clean up common artifacts
+    title = title.replace(/[\[\(].*?[\]\)]/g, '').trim(); // Remove bracketed content like (Original Mix)
+    title = title.replace(/\s+/g, ' '); // Normalize whitespace
+
+    if (artist) {
+      artist = artist.replace(/[\[\(].*?[\]\)]/g, '').trim();
+      artist = artist.replace(/\s+/g, ' ');
+    }
+
+    return {
+      title: title || filename,
+      artist: artist
+    };
   }
 
   getSupportedExtensions(): string[] {

@@ -2,9 +2,10 @@ import { Disc, Search, Settings } from 'lucide-react'
 
 interface HeaderProps {
   onScan: () => void
+  onSettings: () => void
 }
 
-export function Header({ onScan }: HeaderProps) {
+export function Header({ onScan, onSettings }: HeaderProps) {
   return (
     <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
       <div className="flex items-center justify-between">
@@ -25,7 +26,11 @@ export function Header({ onScan }: HeaderProps) {
             Scan Library
           </button>
 
-          <button className="p-2 text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={onSettings}
+            className="p-2 text-gray-400 hover:text-white transition-colors"
+            aria-label="Settings"
+          >
             <Settings className="h-5 w-5" />
           </button>
         </div>

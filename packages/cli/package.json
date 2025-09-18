@@ -1,6 +1,6 @@
 {
   "name": "@cleancue/cli",
-  "version": "1.0.0",
+  "version": "0.2.2",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -10,7 +10,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@cleancue/engine": "workspace:*"
+    "@cleancue/engine": "workspace:*",
+    "@cleancue/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

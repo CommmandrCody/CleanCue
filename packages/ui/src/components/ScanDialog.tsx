@@ -72,38 +72,94 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
       duplicates: 0
     })
 
-    // Simulate scanning process
-    const simulateScan = async () => {
-      // Phase 1: File discovery
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setProgress(prev => ({ ...prev, total: 156 }))
+    try {
+      if (window.electronAPI) {
+        // Start real scan via Electron API
+        const scanResult = await window.electronAPI.engineScan(selectedPath)
 
-      // Phase 2: File processing
-      for (let i = 1; i <= 156; i++) {
-        await new Promise(resolve => setTimeout(resolve, 50))
-        setProgress(prev => ({
-          ...prev,
-          processed: i,
-          currentFile: `Track ${i}.mp3`,
-          newTracks: Math.floor(i * 0.8),
-          duplicates: Math.floor(i * 0.1)
-        }))
+        if (scanResult.success) {
+          setProgress({
+            phase: 'complete',
+            processed: scanResult.tracksFound,
+            total: scanResult.tracksFound,
+            errors: [],
+            newTracks: scanResult.tracksFound,
+            duplicates: 0,
+            currentFile: undefined
+          })
+        } else {
+          setProgress(prev => ({
+            ...prev,
+            phase: 'complete',
+            errors: [scanResult.error || 'Scan failed']
+          }))
+        }
       }
-
-      // Phase 3: Analysis
-      setProgress(prev => ({ ...prev, phase: 'analyzing' }))
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      // Complete
+    } catch (error) {
+      console.error('Scan failed:', error)
       setProgress(prev => ({
         ...prev,
         phase: 'complete',
-        currentFile: undefined,
-        errors: ['Could not read metadata from 3 files']
+        errors: ['Failed to scan library']
       }))
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const handleRescanLibrary = async () => {
+    if (!selectedPath) return
+
+    if (!confirm('This will clear all existing tracks and rescan with improved metadata parsing. Continue?')) {
+      return
     }
 
-    await simulateScan()
+    setScanning(true)
+    setProgress({
+      phase: 'scanning',
+      processed: 0,
+      total: 0,
+      errors: [],
+      newTracks: 0,
+      duplicates: 0
+    })
+
+    try {
+      if (window.electronAPI) {
+        // First clear the library
+        await window.electronAPI.engineClearLibrary()
+
+        // Then scan again with improved parsing
+        const scanResult = await window.electronAPI.engineScan(selectedPath)
+
+        if (scanResult.success) {
+          setProgress({
+            phase: 'complete',
+            processed: scanResult.tracksFound,
+            total: scanResult.tracksFound,
+            errors: [],
+            newTracks: scanResult.tracksFound,
+            duplicates: 0,
+            currentFile: undefined
+          })
+        } else {
+          setProgress(prev => ({
+            ...prev,
+            phase: 'complete',
+            errors: [scanResult.error || 'Rescan failed']
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('Rescan failed:', error)
+      setProgress(prev => ({
+        ...prev,
+        phase: 'complete',
+        errors: ['Failed to rescan library']
+      }))
+    } finally {
+      setScanning(false)
+    }
   }
 
   const getPhaseIcon = (phase: string) => {
@@ -276,18 +332,32 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
             {progress.phase === 'complete' ? 'Close' : 'Cancel'}
           </button>
           {progress.phase !== 'complete' && (
-            <button
-              onClick={handleStartScan}
-              disabled={!selectedPath || scanning}
-              className={clsx(
-                'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-                selectedPath && !scanning
-                  ? 'bg-primary-600 hover:bg-primary-700 text-white'
-                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-              )}
-            >
-              {scanning ? 'Scanning...' : 'Start Scan'}
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleStartScan}
+                disabled={!selectedPath || scanning}
+                className={clsx(
+                  'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                  selectedPath && !scanning
+                    ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                )}
+              >
+                {scanning ? 'Scanning...' : 'Start Scan'}
+              </button>
+              <button
+                onClick={handleRescanLibrary}
+                disabled={!selectedPath || scanning}
+                className={clsx(
+                  'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                  selectedPath && !scanning
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                )}
+              >
+                {scanning ? 'Rescanning...' : 'Rescan Library'}
+              </button>
+            </div>
           )}
         </div>
       </div>

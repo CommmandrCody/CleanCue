@@ -9,8 +9,9 @@ export interface ElectronAPI {
   showItemInFolder: (fullPath: string) => Promise<void>
 
   // Engine operations
-  engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number }>
+  engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number; error?: string }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[]; error?: string }>
+  engineClearLibrary: () => Promise<{ success: boolean; removedCount: number; error?: string }>
   getAllTracks: () => Promise<any[]>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
@@ -24,6 +25,12 @@ export interface ElectronAPI {
   // Analysis settings
   saveAnalysisSettings: (settings: any) => Promise<{ success: boolean }>
   detectDJSoftware: () => Promise<{ success: boolean; software: string[]; serato?: any; traktor?: any; rekordbox?: any }>
+
+  // Additional API methods for UI components
+  getAnalysisJobs: () => Promise<{ success: boolean; jobs: any[] }>
+  getLibraryHealth: () => Promise<{ success: boolean; issues: any[] }>
+  scanLibraryHealth: () => Promise<{ success: boolean; issues: any[] }>
+
 
   // STEM Separation operations
   stemCheckDependencies: () => Promise<{ success: boolean; available: boolean; missingDeps: string[] }>

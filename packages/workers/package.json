@@ -1,6 +1,6 @@
 {
   "name": "@cleancue/workers",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Python analysis workers for CleanCue",
   "private": true,
   "scripts": {

@@ -18,94 +18,43 @@ interface AnalysisJob {
   }
 }
 
-// Mock analysis jobs
-const mockJobs: AnalysisJob[] = [
-  {
-    id: '1',
-    trackTitle: 'Feel So Close',
-    trackArtist: 'Calvin Harris',
-    status: 'completed',
-    progress: 100,
-    results: {
-      bpm: 128,
-      key: 'A minor',
-      energy: 85,
-      duration: 245
-    }
-  },
-  {
-    id: '2',
-    trackTitle: 'Strobe',
-    trackArtist: 'Deadmau5',
-    status: 'running',
-    progress: 67,
-    currentTask: 'Analyzing key signature...'
-  },
-  {
-    id: '3',
-    trackTitle: 'In The Name Of Love',
-    trackArtist: 'Martin Garrix feat. Bebe Rexha',
-    status: 'pending',
-    progress: 0
-  },
-  {
-    id: '4',
-    trackTitle: 'Levels',
-    trackArtist: 'Avicii',
-    status: 'failed',
-    progress: 45,
-    results: {
-      errors: ['Could not decode audio file', 'Unsupported format']
-    }
-  }
-]
-
 export function AnalysisProgress() {
-  const [jobs, setJobs] = useState(mockJobs)
+  const [jobs, setJobs] = useState<AnalysisJob[]>([])
   const [isRunning, setIsRunning] = useState(true)
-  const [stats] = useState({
-    total: 4,
-    completed: 1,
-    failed: 1,
-    remaining: 2
-  })
+  // Calculate stats from actual jobs
+  const stats = {
+    total: jobs.length,
+    completed: jobs.filter(job => job.status === 'completed').length,
+    failed: jobs.filter(job => job.status === 'failed').length,
+    remaining: jobs.filter(job => job.status === 'pending' || job.status === 'running').length
+  }
 
-  // Simulate progress updates
+  // Load real analysis jobs from backend
   useEffect(() => {
-    if (!isRunning) return
-
-    const interval = setInterval(() => {
-      setJobs(prevJobs =>
-        prevJobs.map(job => {
-          if (job.status === 'running' && job.progress < 100) {
-            const newProgress = Math.min(job.progress + Math.random() * 10, 100)
-            if (newProgress >= 100) {
-              return {
-                ...job,
-                status: 'completed',
-                progress: 100,
-                currentTask: undefined,
-                results: {
-                  bpm: 126 + Math.floor(Math.random() * 20),
-                  key: ['C major', 'D minor', 'A minor', 'G major'][Math.floor(Math.random() * 4)],
-                  energy: 60 + Math.floor(Math.random() * 40),
-                  duration: 180 + Math.floor(Math.random() * 200)
-                }
-              }
-            }
-            return {
-              ...job,
-              progress: newProgress,
-              currentTask: ['Analyzing tempo...', 'Detecting key...', 'Calculating energy...'][Math.floor(Math.random() * 3)]
-            }
+    const loadJobs = async () => {
+      try {
+        if (window.electronAPI) {
+          const response = await window.electronAPI.getAnalysisJobs()
+          if (response.success) {
+            setJobs(response.jobs || [])
           }
-          return job
-        })
-      )
-    }, 1000)
+        }
+      } catch (error) {
+        console.error('Failed to load analysis jobs:', error)
+      }
+    }
+
+    loadJobs()
+
+    // Poll for updates every 2 seconds if jobs are running
+    const interval = setInterval(() => {
+      if (jobs.some(job => job.status === 'running')) {
+        loadJobs()
+      }
+    }, 2000)
 
     return () => clearInterval(interval)
-  }, [isRunning])
+  }, [jobs, isRunning])
 
   const handleToggleAnalysis = () => {
     setIsRunning(!isRunning)

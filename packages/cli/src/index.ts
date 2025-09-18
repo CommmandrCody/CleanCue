@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 // CLI version and branding
-const CLI_VERSION = '1.0.0';
+const CLI_VERSION = '0.2.0';
 
 interface CLICommand {
   name: string;
@@ -24,20 +24,20 @@ class CleanCueCLI {
 
   private setupEventHandlers() {
     // Progress reporting
-    this.engine.on('scan:started', (data) => {
+    this.engine.on('scan:started', (data: any) => {
       console.log(`🔍 Starting scan of ${data.paths.length} path(s)...`);
     });
 
-    this.engine.on('scan:progress', (data) => {
+    this.engine.on('scan:progress', (data: any) => {
       const percentage = Math.round((data.current / data.total) * 100);
       process.stdout.write(`\r📂 Scanning: ${percentage}% (${data.current}/${data.total}) - ${path.basename(data.currentFile)}`);
     });
 
-    this.engine.on('scan:completed', (data) => {
+    this.engine.on('scan:completed', (data: any) => {
       console.log(`\n✅ Scan complete: ${data.tracksAdded} added, ${data.tracksUpdated} updated, ${data.errors.length} errors`);
       if (data.errors.length > 0) {
         console.log('❌ Errors encountered:');
-        data.errors.slice(0, 5).forEach(error => {
+        data.errors.slice(0, 5).forEach((error: any) => {
           console.log(`   ${error.path}: ${error.error}`);
         });
         if (data.errors.length > 5) {
@@ -46,15 +46,15 @@ class CleanCueCLI {
       }
     });
 
-    this.engine.on('analysis:started', (data) => {
+    this.engine.on('analysis:started', (data: any) => {
       console.log(`🔬 Starting ${data.analyzer} analysis for track ${data.trackId}...`);
     });
 
-    this.engine.on('analysis:progress', (data) => {
+    this.engine.on('analysis:progress', (data: any) => {
       process.stdout.write(`\r🔬 Analyzing: ${data.progress}%`);
     });
 
-    this.engine.on('analysis:completed', (data) => {
+    this.engine.on('analysis:completed', (data: any) => {
       console.log(`\n✅ ${data.analyzer} analysis complete for track ${data.trackId}`);
     });
   }
@@ -124,7 +124,7 @@ class CleanCueCLI {
 
   private async statsCommand(): Promise<void> {
     try {
-      const tracks = await this.engine.getTracks();
+      const tracks = this.engine.getAllTracks();
       const trackCount = tracks.length;
 
       // Count analyzed tracks
@@ -161,7 +161,8 @@ class CleanCueCLI {
   private async listCommand(args: string[]): Promise<void> {
     try {
       const limit = args[0] ? parseInt(args[0]) : 20;
-      const tracks = await this.engine.getTracks(limit);
+      const allTracks = this.engine.getAllTracks();
+      const tracks = allTracks.slice(0, limit);
 
       if (tracks.length === 0) {
         console.log('📭 No tracks found. Run "cleancue scan <path>" to add music files.');

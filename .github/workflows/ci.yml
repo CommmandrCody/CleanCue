@@ -1,0 +1,153 @@
+name: CleanCue CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+    - name: Setup pnpm cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pnpm install
+
+    - name: Setup Python virtual environment
+      run: |
+        cd packages/workers
+        python -m venv venv
+        source venv/bin/activate
+        pip install numpy scipy librosa
+
+    - name: Run health check
+      run: pnpm run test:health
+
+    - name: Run unit tests
+      run: pnpm run test:unit
+
+    - name: Build application
+      run: pnpm run build
+
+    - name: Run build validation
+      run: pnpm run test:build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: build-artifacts
+        path: |
+          apps/desktop/release/
+          packages/ui/dist/
+        retention-days: 7
+
+  security:
+    runs-on: macos-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+
+    - name: Install dependencies
+      run: pnpm install
+
+    - name: Run security audit
+      run: pnpm audit --audit-level moderate
+      continue-on-error: true
+
+    - name: Check for secrets
+      run: |
+        if grep -r "API_KEY\|SECRET\|PASSWORD\|TOKEN" --include="*.ts" --include="*.js" --include="*.json" . --exclude-dir=node_modules --exclude-dir=.git; then
+          echo "⚠️  Potential secrets found in code"
+          exit 1
+        fi
+        echo "✅ No obvious secrets found"
+
+  release:
+    runs-on: macos-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 8
+
+    - name: Install dependencies
+      run: pnpm install
+
+    - name: Setup Python virtual environment
+      run: |
+        cd packages/workers
+        python -m venv venv
+        source venv/bin/activate
+        pip install numpy scipy librosa
+
+    - name: Build for release
+      run: pnpm run build
+
+    - name: Final validation
+      run: pnpm run test:build
+
+    - name: Create release artifacts
+      run: |
+        mkdir -p release-artifacts
+        cp -r apps/desktop/release/*.dmg release-artifacts/ || true
+        cp -r apps/desktop/release/mac/ release-artifacts/ || true
+
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts
+        path: release-artifacts/
+        retention-days: 30

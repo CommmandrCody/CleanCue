@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -24,67 +24,32 @@ interface HealthIssue {
   count?: number
 }
 
-const mockIssues: HealthIssue[] = [
-  {
-    id: '1',
-    type: 'missing',
-    severity: 'high',
-    title: 'Missing Audio Files',
-    description: '3 tracks reference files that no longer exist',
-    count: 3,
-    suggestion: 'Remove from library or update file paths'
-  },
-  {
-    id: '2',
-    type: 'metadata',
-    severity: 'medium',
-    title: 'Missing BPM Data',
-    description: '47 tracks are missing BPM information',
-    count: 47,
-    suggestion: 'Run audio analysis to detect BPM automatically'
-  },
-  {
-    id: '3',
-    type: 'metadata',
-    severity: 'medium',
-    title: 'Missing Key Information',
-    description: '52 tracks are missing musical key data',
-    count: 52,
-    suggestion: 'Run key detection analysis'
-  },
-  {
-    id: '4',
-    type: 'duplicate',
-    severity: 'low',
-    title: 'Potential Duplicates',
-    description: '8 tracks may be duplicates based on metadata similarity',
-    count: 8,
-    suggestion: 'Review and merge or remove duplicate entries'
-  },
-  {
-    id: '5',
-    type: 'warning',
-    severity: 'low',
-    title: 'Low Quality Audio',
-    description: '12 tracks have bitrates below 256kbps',
-    count: 12,
-    suggestion: 'Consider replacing with higher quality versions'
-  },
-  {
-    id: '6',
-    type: 'corrupted',
-    severity: 'high',
-    title: 'Corrupted Files',
-    description: '1 track appears to be corrupted and cannot be read',
-    count: 1,
-    suggestion: 'Replace or remove corrupted file'
-  }
-]
-
 export function HealthDashboard() {
-  const [issues, setIssues] = useState(mockIssues)
+  const [issues, setIssues] = useState<HealthIssue[]>([])
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadHealthIssues()
+  }, [])
+
+  const loadHealthIssues = async () => {
+    try {
+      setLoading(true)
+      if (window.electronAPI) {
+        const response = await window.electronAPI.getLibraryHealth()
+        if (response.success) {
+          setIssues(response.issues || [])
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load health issues:', error)
+      setIssues([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const totalIssues = issues.length
   const highSeverityIssues = issues.filter(i => i.severity === 'high').length
@@ -122,10 +87,19 @@ export function HealthDashboard() {
   }
 
   const handleScanHealth = async () => {
-    setScanning(true)
-    // Simulate health scan
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    setScanning(false)
+    try {
+      setScanning(true)
+      if (window.electronAPI) {
+        const response = await window.electronAPI.scanLibraryHealth()
+        if (response.success) {
+          setIssues(response.issues || [])
+        }
+      }
+    } catch (error) {
+      console.error('Failed to scan library health:', error)
+    } finally {
+      setScanning(false)
+    }
   }
 
   const handleFixIssue = (issueId: string) => {
@@ -167,7 +141,7 @@ export function HealthDashboard() {
           <div className="flex items-center space-x-3">
             <Activity className="h-8 w-8 text-primary-400" />
             <div>
-              <div className="text-2xl font-bold">{totalIssues}</div>
+              <div className="text-2xl font-bold">{loading ? '...' : totalIssues}</div>
               <div className="text-sm text-gray-400">Total Issues</div>
             </div>
           </div>
@@ -177,7 +151,7 @@ export function HealthDashboard() {
           <div className="flex items-center space-x-3">
             <AlertTriangle className="h-8 w-8 text-red-400" />
             <div>
-              <div className="text-2xl font-bold text-red-400">{highSeverityIssues}</div>
+              <div className="text-2xl font-bold text-red-400">{loading ? '...' : highSeverityIssues}</div>
               <div className="text-sm text-gray-400">High Priority</div>
             </div>
           </div>
@@ -187,7 +161,7 @@ export function HealthDashboard() {
           <div className="flex items-center space-x-3">
             <AlertTriangle className="h-8 w-8 text-yellow-400" />
             <div>
-              <div className="text-2xl font-bold text-yellow-400">{mediumSeverityIssues}</div>
+              <div className="text-2xl font-bold text-yellow-400">{loading ? '...' : mediumSeverityIssues}</div>
               <div className="text-sm text-gray-400">Medium Priority</div>
             </div>
           </div>
@@ -197,7 +171,7 @@ export function HealthDashboard() {
           <div className="flex items-center space-x-3">
             <Info className="h-8 w-8 text-blue-400" />
             <div>
-              <div className="text-2xl font-bold text-blue-400">{lowSeverityIssues}</div>
+              <div className="text-2xl font-bold text-blue-400">{loading ? '...' : lowSeverityIssues}</div>
               <div className="text-sm text-gray-400">Low Priority</div>
             </div>
           </div>

@@ -287,6 +287,28 @@ class CleanCueApp {
       }
     })
 
+    ipcMain.handle('engine-clear-library', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // Get all tracks and delete them
+        const tracks = this.engine.getAllTracks()
+        const trackIds = tracks.map((track: any) => track.id)
+
+        if (trackIds.length > 0) {
+          await this.engine.deleteTracks(trackIds, false) // Don't delete files, just remove from library
+        }
+
+        return { success: true, removedCount: trackIds.length }
+      } catch (error) {
+        console.error('Failed to clear library:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
     ipcMain.handle('engine-analyze', async (_, trackIds: string[]) => {
       try {
         await this.initializeEngine()
@@ -594,8 +616,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        const duplicates = this.engine.getDuplicates()
-        return duplicates
+        // TODO: Implement duplicate detection
+        return []
       } catch (error) {
         console.error('Failed to get duplicate groups:', error)
         return []
@@ -609,8 +631,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        const duplicates = this.engine.scanForDuplicates()
-        return duplicates
+        // TODO: Implement duplicate scanning
+        return []
       } catch (error) {
         console.error('Failed to scan for duplicates:', error)
         return []

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Engine operations
   engineScan: (folderPath: string) => ipcRenderer.invoke('engine-scan', folderPath),
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
+  engineClearLibrary: () => ipcRenderer.invoke('engine-clear-library'),
   getAllTracks: () => ipcRenderer.invoke('get-all-tracks'),
   engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),

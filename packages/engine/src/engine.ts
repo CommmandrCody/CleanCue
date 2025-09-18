@@ -1,10 +1,10 @@
-import { CleanCueDatabase } from './database.js';
-import { FileScanner } from './scanner.js';
-import { WorkerPool } from './workers.js';
-import { EventBus } from './events.js';
-import { ConfigManager } from './config.js';
-import { USBExporter } from './usb-exporter.js';
-import { StemSeparationService, StemSeparationSettings, StemSeparationResult } from './stem-separation-service.js';
+import { CleanCueDatabase } from './database';
+import { FileScanner } from './scanner';
+import { WorkerPool } from './workers';
+import { EventBus } from './events';
+import { ConfigManager } from './config';
+import { USBExporter } from './usb-exporter';
+import { StemSeparationService, StemSeparationSettings, StemSeparationResult } from './stem-separation-service';
 import type {
   Track, Analysis, ScanResult, HealthReport, ExportOptions,
   ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
