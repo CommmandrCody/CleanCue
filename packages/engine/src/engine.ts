@@ -3,9 +3,10 @@ import { FileScanner } from './scanner.js';
 import { WorkerPool } from './workers.js';
 import { EventBus } from './events.js';
 import { ConfigManager } from './config.js';
-import type { 
-  Track, Analysis, ScanResult, HealthReport, ExportOptions, 
-  ExportFormat, CleanCueEvent, CuePoint, Config 
+import { USBExporter } from './usb-exporter.js';
+import type {
+  Track, Analysis, ScanResult, HealthReport, ExportOptions,
+  ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
 } from '@cleancue/shared';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -16,6 +17,7 @@ export class CleanCueEngine {
   private workerPool: WorkerPool;
   private events: EventBus;
   private config: ConfigManager;
+  private usbExporter: USBExporter;
 
   constructor(configPath?: string) {
     this.config = new ConfigManager(configPath);
@@ -23,6 +25,7 @@ export class CleanCueEngine {
     this.scanner = new FileScanner(this.config.get('scanning'));
     this.workerPool = new WorkerPool(this.config.get('workers'));
     this.events = new EventBus();
+    this.usbExporter = new USBExporter();
 
     this.setupEventHandlers();
   }
@@ -171,13 +174,19 @@ export class CleanCueEngine {
         status: 'pending'
       });
 
-      // Submit job to worker pool
-      await this.workerPool.submitJob({
+      // Submit job to worker pool and wait for completion
+      const result = await this.workerPool.submitJob({
         id: analysis.id,
         trackId,
         audioPath: track.path,
         analyzer: analyzerName,
         parameters: analyzerConfig.parameters || {}
+      });
+
+      // Update analysis with results
+      this.db.updateAnalysis(analysis.id, {
+        results: result.results,
+        status: result.status
       });
     }
   }
@@ -194,7 +203,7 @@ export class CleanCueEngine {
     }
   }
 
-  // Cue point generation
+  // Enhanced cue point generation
   async generateCues(trackId: string): Promise<CuePoint[]> {
     const track = this.db.getTrack(trackId);
     if (!track) {
@@ -204,44 +213,188 @@ export class CleanCueEngine {
     // Get analysis results for cue generation
     const analyses = this.db.getAnalysesByTrack(trackId);
     const tempoAnalysis = analyses.find(a => a.analyzerName === 'tempo' && a.status === 'completed');
+    const energyAnalysis = analyses.find(a => a.analyzerName === 'energy' && a.status === 'completed');
 
     if (!tempoAnalysis) {
       throw new Error('Track must be analyzed for tempo before generating cues');
     }
 
     const cues: CuePoint[] = [];
+    const tempoData = tempoAnalysis.results as any;
+    const energyData = energyAnalysis?.results as any;
 
-    // Generate basic cues based on analysis
-    if (track.durationMs) {
-      // Intro cue (8 bars or 16 seconds, whichever is shorter)
-      const introDuration = Math.min(16000, track.durationMs * 0.1);
+    if (track.durationMs && tempoData) {
+      const bpm = tempoData.tempo || 120;
+      const beatPositions = tempoData.beat_positions || [];
+      const secondsPerBeat = 60 / bpm;
+
+      // Calculate 8-bar and 16-bar intervals in milliseconds
+      const eightBarMs = 8 * 4 * secondsPerBeat * 1000; // 8 bars = 32 beats
+      const sixteenBarMs = 16 * 4 * secondsPerBeat * 1000; // 16 bars = 64 beats
+
+      // INTRO CUE: Find first strong beat or 8 bars, whichever comes first
+      let introPosition = 0;
+      if (beatPositions.length > 0) {
+        // Look for the first strong beat after initial silence
+        const firstStrongBeat = beatPositions.find((beat: number) => beat > 1) || beatPositions[0];
+        introPosition = Math.min(firstStrongBeat * 1000, eightBarMs);
+      }
+
       cues.push(await this.db.insertCue({
         trackId,
         type: 'intro',
-        positionMs: 0,
-        label: 'Intro',
-        confidence: 0.5
+        positionMs: introPosition,
+        label: beatPositions.length > 0 ? 'First Beat' : 'Intro',
+        confidence: beatPositions.length > 0 ? 0.9 : 0.5
       }));
 
-      // Outro cue (last 16 seconds or 10% of track)
-      const outroDuration = Math.min(16000, track.durationMs * 0.1);
+      // OUTRO CUE: 16 bars from end or last strong beat
+      const sixteenBarsFromEnd = Math.max(0, track.durationMs - sixteenBarMs);
+      let outroPosition = sixteenBarsFromEnd;
+
+      if (beatPositions.length > 0) {
+        // Find last beat that's at least 16 bars from end
+        const lastGoodBeat = beatPositions
+          .map((beat: number) => beat * 1000)
+          .reverse()
+          .find((beatMs: number) => beatMs <= sixteenBarsFromEnd);
+
+        if (lastGoodBeat) {
+          outroPosition = lastGoodBeat;
+        }
+      }
+
       cues.push(await this.db.insertCue({
         trackId,
         type: 'outro',
-        positionMs: track.durationMs - outroDuration,
-        label: 'Outro',
-        confidence: 0.5
+        positionMs: outroPosition,
+        label: 'Outro (16 bars)',
+        confidence: beatPositions.length > 0 ? 0.8 : 0.5
       }));
 
-      // Drop cue (rough estimate at 1/4 through track)
-      const dropPosition = Math.floor(track.durationMs * 0.25);
-      cues.push(await this.db.insertCue({
-        trackId,
-        type: 'drop',
-        positionMs: dropPosition,
-        label: 'Drop',
-        confidence: 0.3
-      }));
+      // ENERGY-BASED CUES: Use energy analysis if available
+      if (energyData) {
+        // DROP CUE: Find highest energy spike (typical drop location)
+        if (energyData.energy_curve && Array.isArray(energyData.energy_curve)) {
+          const energyCurve = energyData.energy_curve;
+          let maxEnergy = 0;
+          let dropIndex = Math.floor(energyCurve.length * 0.25); // fallback to 1/4
+
+          // Find the biggest energy jump in the first half of the track
+          for (let i = Math.floor(energyCurve.length * 0.1); i < Math.floor(energyCurve.length * 0.6); i++) {
+            const energyJump = energyCurve[i] - (energyCurve[i-5] || 0); // Compare to 5 points back
+            if (energyJump > maxEnergy) {
+              maxEnergy = energyJump;
+              dropIndex = i;
+            }
+          }
+
+          const dropPositionMs = (dropIndex / energyCurve.length) * track.durationMs;
+
+          // Snap to nearest beat if available
+          let finalDropPosition = dropPositionMs;
+          if (beatPositions.length > 0) {
+            const nearestBeat = beatPositions
+              .map((beat: number) => ({ beat, diff: Math.abs((beat * 1000) - dropPositionMs) }))
+              .sort((a, b) => a.diff - b.diff)[0];
+
+            if (nearestBeat.diff < 2000) { // Within 2 seconds
+              finalDropPosition = nearestBeat.beat * 1000;
+            }
+          }
+
+          cues.push(await this.db.insertCue({
+            trackId,
+            type: 'drop',
+            positionMs: finalDropPosition,
+            label: 'Drop (Energy Peak)',
+            confidence: maxEnergy > 0.1 ? 0.85 : 0.4
+          }));
+        } else {
+          // Fallback drop cue
+          cues.push(await this.db.insertCue({
+            trackId,
+            type: 'drop',
+            positionMs: Math.floor(track.durationMs * 0.25),
+            label: 'Drop (Estimated)',
+            confidence: 0.3
+          }));
+        }
+
+        // BREAKDOWN CUE: Look for energy dips (breakdown sections)
+        if (energyData.energy_curve && Array.isArray(energyData.energy_curve)) {
+          const energyCurve = energyData.energy_curve;
+          let minEnergy = 1;
+          let breakdownIndex = -1;
+
+          // Find the biggest energy drop in the middle section
+          for (let i = Math.floor(energyCurve.length * 0.3); i < Math.floor(energyCurve.length * 0.7); i++) {
+            if (energyCurve[i] < minEnergy && energyCurve[i] < 0.3) {
+              minEnergy = energyCurve[i];
+              breakdownIndex = i;
+            }
+          }
+
+          if (breakdownIndex > 0) {
+            const breakdownPositionMs = (breakdownIndex / energyCurve.length) * track.durationMs;
+
+            // Snap to beat
+            let finalBreakdownPosition = breakdownPositionMs;
+            if (beatPositions.length > 0) {
+              const nearestBeat = beatPositions
+                .map((beat: number) => ({ beat, diff: Math.abs((beat * 1000) - breakdownPositionMs) }))
+                .sort((a, b) => a.diff - b.diff)[0];
+
+              if (nearestBeat.diff < 3000) {
+                finalBreakdownPosition = nearestBeat.beat * 1000;
+              }
+            }
+
+            cues.push(await this.db.insertCue({
+              trackId,
+              type: 'break',
+              positionMs: finalBreakdownPosition,
+              label: 'Breakdown',
+              confidence: 0.7
+            }));
+          }
+        }
+      } else {
+        // Fallback drop cue without energy analysis
+        cues.push(await this.db.insertCue({
+          trackId,
+          type: 'drop',
+          positionMs: Math.floor(track.durationMs * 0.25),
+          label: 'Drop (Estimated)',
+          confidence: 0.3
+        }));
+      }
+
+      // HOT CUE: Mark strong beats at 8-bar intervals for DJ mixing
+      if (beatPositions.length > 10) {
+        const hotCuePositions = [];
+        for (let bars = 16; bars <= 64; bars += 16) {
+          const targetTimeSeconds = bars * 4 * secondsPerBeat; // bars * beats_per_bar * seconds_per_beat
+          const nearestBeat = beatPositions
+            .map((beat: number) => ({ beat, diff: Math.abs(beat - targetTimeSeconds) }))
+            .sort((a, b) => a.diff - b.diff)[0];
+
+          if (nearestBeat.diff < 1 && nearestBeat.beat * 1000 < track.durationMs * 0.8) {
+            hotCuePositions.push(nearestBeat.beat * 1000);
+          }
+        }
+
+        for (let i = 0; i < hotCuePositions.length; i++) {
+          const position = hotCuePositions[i];
+          cues.push(await this.db.insertCue({
+            trackId,
+            type: 'custom',
+            positionMs: position,
+            label: `Hot Cue ${i + 1}`,
+            confidence: 0.8
+          }));
+        }
+      }
     }
 
     return cues;
@@ -345,6 +498,36 @@ export class CleanCueEngine {
 
   getCuesByTrack(trackId: string): CuePoint[] {
     return this.db.getCuesByTrack(trackId);
+  }
+
+  async exportToUSB(trackIds: string[], options: USBExportOptions): Promise<USBExportResult> {
+    const tracks = trackIds.map(id => this.db.getTrack(id)).filter(track => track !== null) as Track[];
+
+    if (tracks.length === 0) {
+      throw new Error('No valid tracks found for export');
+    }
+
+    // Get all cue points for the tracks
+    const allCues: CuePoint[] = [];
+    for (const track of tracks) {
+      const trackCues = this.db.getCuesByTrack(track.id);
+      allCues.push(...trackCues);
+    }
+
+    this.events.emit('export:started', { format: 'USB', trackCount: tracks.length });
+
+    try {
+      const result = await this.usbExporter.exportToUSB(tracks, allCues, options);
+
+      this.events.emit('export:completed', { outputPath: result.outputPath });
+      return result;
+    } catch (error) {
+      throw new Error(`USB export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  getUSBExportProfiles() {
+    return this.usbExporter.getDefaultProfiles();
   }
 
   close(): void {

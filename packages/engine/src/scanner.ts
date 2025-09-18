@@ -3,13 +3,19 @@ import path from 'path';
 import crypto from 'crypto';
 
 // Handle music-metadata import - it might not be available during build
-let parseFile: any;
-try {
-  const musicMetadata = await import('music-metadata');
-  parseFile = musicMetadata.parseFile;
-} catch (error) {
-  console.warn('music-metadata not available, metadata extraction will be limited');
-  parseFile = null;
+let parseFile: any = null;
+
+async function getParseFile() {
+  if (parseFile === null) {
+    try {
+      const musicMetadata = await import('music-metadata');
+      parseFile = musicMetadata.parseFile;
+    } catch (error) {
+      console.warn('music-metadata not available, metadata extraction will be limited');
+      parseFile = false; // Mark as failed
+    }
+  }
+  return parseFile === false ? null : parseFile;
 }
 
 export interface ScannedFile {
@@ -169,13 +175,14 @@ export class FileScanner {
   }
 
   async extractMetadata(filePath: string): Promise<AudioMetadata> {
-    if (!parseFile) {
+    const parseFileFn = await getParseFile();
+    if (!parseFileFn) {
       console.warn('music-metadata not available, returning empty metadata');
       return {};
     }
 
     try {
-      const metadata = await parseFile(filePath);
+      const metadata = await parseFileFn(filePath);
       
       return {
         title: metadata.common.title,

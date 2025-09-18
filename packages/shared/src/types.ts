@@ -87,6 +87,62 @@ export interface HealthIssue {
 // Analysis types
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
+// USB Export types
+export interface USBExportProfile {
+  name: string;
+  description: string;
+  filenameTemplate: {
+    pattern: string;
+    separator: string;
+    includeTrackNumber: boolean;
+    zeroPadTrackNumber: number;
+    maxLength: number;
+    conflictResolution: 'append_number' | 'overwrite' | 'skip';
+  };
+  characterNormalization: {
+    removeAccents: boolean;
+    replaceSpaces: boolean;
+    spaceReplacement: string;
+    allowedCharacters: 'strict' | 'relaxed' | 'custom';
+    customAllowedPattern?: string;
+    caseTransform: 'none' | 'lowercase' | 'uppercase' | 'titlecase';
+    removeSpecialChars: boolean;
+    customReplacements: { [key: string]: string };
+  };
+  preserveStructure: boolean;
+  createArtistFolders: boolean;
+  createGenreFolders: boolean;
+  flattenFolders: boolean;
+  includeMetadataFiles: boolean;
+  createPlaylist: boolean;
+  playlistFormat: 'm3u' | 'pls';
+}
+
+export interface USBExportOptions {
+  profile: USBExportProfile;
+  outputPath: string;
+  fileAction: 'copy' | 'move' | 'hardlink' | 'symlink';
+  backupOriginal: boolean;
+  backupLocation?: string;
+  overwriteExisting: boolean;
+  verifyIntegrity: boolean;
+  preserveTimestamps: boolean;
+}
+
+export interface USBExportResult {
+  success: boolean;
+  totalFiles: number;
+  copiedFiles: number;
+  skippedFiles: number;
+  errorFiles: number;
+  outputPath: string;
+  totalSize: number;
+  errors: Array<{ file: string; error: string }>;
+  warnings: Array<{ file: string; warning: string }>;
+  duplicatesHandled: number;
+  backupsCreated: number;
+}
+
 export interface AnalysisJob {
   id: string;
   trackId: string;

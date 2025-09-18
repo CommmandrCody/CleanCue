@@ -125,3 +125,73 @@ apps/desktop/release/
 
 # Python virtual environments
 packages/workers/venv/
+
+# Development and internal documentation
+VALIDATION_STATUS.md
+ARCHITECTURE.md
+CODE_REVIEW.md
+OUTSTANDING_ISSUES.md
+WINDOWS_PACKAGE_PLAN.md
+ROADMAP.md
+
+# Test and validation scripts (development only)
+test_*.js
+test_*.html
+validate_*.js
+*_test.js
+*_validation.js
+
+# Backup and mock files
+*.backup
+*.mock
+*.bak
+*.tmp
+
+# macOS app downloads (too large for git)
+Cursor-*.dmg
+*.dmg
+"Hell Bent Core Vision & Mission Document.pdf"
+
+# Development scripts and temporary files
+run_electron.sh
+fresh_git_push.sh
+*.electron-gyp/
+.electron-gyp/
+
+# Manual Electron installations
+/tmp/electron-manual/
+
+# Claude Code session artifacts
+*claude*
+*.claude
+CLAUDE*.md
+
+# Development databases and exports (contain test data)
+*.m3u
+cleancue_*.db
+test_*.db
+
+# IDE and editor artifacts
+*.code-workspace
+.vscode/settings.json
+
+# OS and system files
+*.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Build artifacts and compiled outputs
+*.js.map
+*.d.ts.map
+
+# Package manager lockfiles (keep main one only)
+!pnpm-lock.yaml
+!package-lock.json
+!yarn.lock
+
+# Temporary analysis results
+/tmp/cleancue_*
+
+# macOS Spotlight
+.Spotlight-V100

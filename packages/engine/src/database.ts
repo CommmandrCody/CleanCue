@@ -1,111 +1,292 @@
 import { randomUUID } from 'crypto';
+import Database from 'better-sqlite3';
 import type { Track, Analysis, CuePoint, Playlist, PlaylistTrack, HealthIssue } from '@cleancue/shared';
 
 export class CleanCueDatabase {
-  private tracks: Map<string, Track> = new Map();
-  private analyses: Map<string, Analysis> = new Map();
-  private cues: Map<string, CuePoint> = new Map();
-  private tracksByPath: Map<string, string> = new Map();
-  private tracksByHash: Map<string, string[]> = new Map();
+  private db: Database.Database;
 
   constructor(dbPath: string) {
-    console.log(`Mock database initialized at: ${dbPath}`);
+    this.db = new Database(dbPath);
+    this.setupTables();
+    console.log(`SQLite database initialized at: ${dbPath}`);
+  }
+
+  private setupTables() {
+    // Create tracks table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tracks (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        hash TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        extension TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        file_modified_at INTEGER NOT NULL,
+        title TEXT,
+        artist TEXT,
+        album TEXT,
+        genre TEXT,
+        year INTEGER,
+        duration_ms INTEGER,
+        bitrate INTEGER,
+        sample_rate INTEGER,
+        channels INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // Create analyses table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS analyses (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        analyzer_name TEXT NOT NULL,
+        analyzer_version TEXT NOT NULL,
+        parameters TEXT NOT NULL,
+        results TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (track_id) REFERENCES tracks (id)
+      )
+    `);
+
+    // Create cue_points table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cue_points (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        position_ms INTEGER NOT NULL,
+        label TEXT,
+        confidence REAL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (track_id) REFERENCES tracks (id)
+      )
+    `);
+
+    // Create indexes
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);
+      CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash);
+      CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id);
+      CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id);
+    `);
   }
 
   async insertTrack(track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>): Promise<Track> {
     const id = randomUUID();
-    const now = new Date();
-    
-    const newTrack: Track = {
+    const now = Date.now();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO tracks (
+        id, path, hash, filename, extension, size_bytes, file_modified_at,
+        title, artist, album, genre, year, duration_ms, bitrate, sample_rate, channels,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id, track.path, track.hash, track.filename, track.extension, track.sizeBytes,
+      track.fileModifiedAt.getTime(), track.title, track.artist, track.album,
+      track.genre, track.year, track.durationMs, track.bitrate, track.sampleRate,
+      track.channels, now, now
+    );
+
+    return {
       ...track,
       id,
-      createdAt: now,
-      updatedAt: now
+      createdAt: new Date(now),
+      updatedAt: new Date(now)
     };
-    
-    this.tracks.set(id, newTrack);
-    this.tracksByPath.set(track.path, id);
-    
-    // Handle hash mapping
-    if (!this.tracksByHash.has(track.hash)) {
-      this.tracksByHash.set(track.hash, []);
-    }
-    this.tracksByHash.get(track.hash)!.push(id);
-    
-    return newTrack;
   }
 
   updateTrack(id: string, updates: Partial<Track>): void {
-    const track = this.tracks.get(id);
-    if (track) {
-      const updatedTrack = { ...track, ...updates, updatedAt: new Date() };
-      this.tracks.set(id, updatedTrack);
+    const updateFields = [];
+    const values = [];
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (key === 'id' || key === 'createdAt') return; // Skip these fields
+
+      const columnName = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+      updateFields.push(`${columnName} = ?`);
+
+      if (value instanceof Date) {
+        values.push(value.getTime());
+      } else {
+        values.push(value);
+      }
+    });
+
+    if (updateFields.length > 0) {
+      updateFields.push('updated_at = ?');
+      values.push(Date.now());
+      values.push(id);
+
+      const stmt = this.db.prepare(`UPDATE tracks SET ${updateFields.join(', ')} WHERE id = ?`);
+      stmt.run(...values);
     }
   }
 
   getTrack(id: string): Track | null {
-    return this.tracks.get(id) || null;
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE id = ?');
+    const row = stmt.get(id) as any;
+    return row ? this.rowToTrack(row) : null;
   }
 
   getTrackByPath(path: string): Track | null {
-    const id = this.tracksByPath.get(path);
-    return id ? this.tracks.get(id) || null : null;
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE path = ?');
+    const row = stmt.get(path) as any;
+    return row ? this.rowToTrack(row) : null;
   }
 
   getTrackByHash(hash: string): Track[] {
-    const ids = this.tracksByHash.get(hash) || [];
-    return ids.map(id => this.tracks.get(id)!).filter(Boolean);
+    const stmt = this.db.prepare('SELECT * FROM tracks WHERE hash = ?');
+    const rows = stmt.all(hash) as any[];
+    return rows.map(row => this.rowToTrack(row));
   }
 
   getAllTracks(): Track[] {
-    return Array.from(this.tracks.values());
+    const stmt = this.db.prepare('SELECT * FROM tracks ORDER BY created_at DESC');
+    const rows = stmt.all() as any[];
+    return rows.map(row => this.rowToTrack(row));
+  }
+
+  private rowToTrack(row: any): Track {
+    return {
+      id: row.id,
+      path: row.path,
+      hash: row.hash,
+      filename: row.filename,
+      extension: row.extension,
+      sizeBytes: row.size_bytes,
+      fileModifiedAt: new Date(row.file_modified_at),
+      title: row.title,
+      artist: row.artist,
+      album: row.album,
+      genre: row.genre,
+      year: row.year,
+      durationMs: row.duration_ms,
+      bitrate: row.bitrate,
+      sampleRate: row.sample_rate,
+      channels: row.channels,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    };
   }
 
   async insertAnalysis(analysis: Omit<Analysis, 'id' | 'createdAt'>): Promise<Analysis> {
     const id = randomUUID();
-    const newAnalysis: Analysis = {
+    const now = Date.now();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO analyses (id, track_id, analyzer_name, analyzer_version, parameters, results, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      analysis.trackId,
+      analysis.analyzerName,
+      analysis.analyzerVersion,
+      JSON.stringify(analysis.parameters),
+      JSON.stringify(analysis.results),
+      analysis.status,
+      now
+    );
+
+    return {
       ...analysis,
       id,
-      createdAt: new Date()
+      createdAt: new Date(now)
     };
-    
-    this.analyses.set(id, newAnalysis);
-    return newAnalysis;
   }
 
   updateAnalysis(id: string, updates: Partial<Analysis>): void {
-    const analysis = this.analyses.get(id);
-    if (analysis) {
-      const updatedAnalysis = { ...analysis, ...updates };
-      this.analyses.set(id, updatedAnalysis);
+    const updateFields = [];
+    const values = [];
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (key === 'id' || key === 'createdAt') return;
+
+      const columnName = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+      updateFields.push(`${columnName} = ?`);
+
+      if (key === 'parameters' || key === 'results') {
+        values.push(JSON.stringify(value));
+      } else {
+        values.push(value);
+      }
+    });
+
+    if (updateFields.length > 0) {
+      values.push(id);
+      const stmt = this.db.prepare(`UPDATE analyses SET ${updateFields.join(', ')} WHERE id = ?`);
+      stmt.run(...values);
     }
   }
 
   getAnalysesByTrack(trackId: string): Analysis[] {
-    return Array.from(this.analyses.values()).filter(a => a.trackId === trackId);
+    const stmt = this.db.prepare('SELECT * FROM analyses WHERE track_id = ? ORDER BY created_at DESC');
+    const rows = stmt.all(trackId) as any[];
+    return rows.map(row => this.rowToAnalysis(row));
   }
 
   async insertCue(cue: Omit<CuePoint, 'id' | 'createdAt'>): Promise<CuePoint> {
     const id = randomUUID();
-    const newCue: CuePoint = {
+    const now = Date.now();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO cue_points (id, track_id, type, position_ms, label, confidence, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(id, cue.trackId, cue.type, cue.positionMs, cue.label, cue.confidence, now);
+
+    return {
       ...cue,
       id,
-      createdAt: new Date()
+      createdAt: new Date(now)
     };
-    
-    this.cues.set(id, newCue);
-    return newCue;
   }
 
   getCuesByTrack(trackId: string): CuePoint[] {
-    return Array.from(this.cues.values()).filter(c => c.trackId === trackId);
+    const stmt = this.db.prepare('SELECT * FROM cue_points WHERE track_id = ? ORDER BY position_ms');
+    const rows = stmt.all(trackId) as any[];
+    return rows.map(row => this.rowToCuePoint(row));
+  }
+
+  private rowToAnalysis(row: any): Analysis {
+    return {
+      id: row.id,
+      trackId: row.track_id,
+      analyzerName: row.analyzer_name,
+      analyzerVersion: row.analyzer_version,
+      parameters: JSON.parse(row.parameters || '{}'),
+      results: JSON.parse(row.results || '{}'),
+      status: row.status,
+      createdAt: new Date(row.created_at)
+    };
+  }
+
+  private rowToCuePoint(row: any): CuePoint {
+    return {
+      id: row.id,
+      trackId: row.track_id,
+      type: row.type,
+      positionMs: row.position_ms,
+      label: row.label,
+      confidence: row.confidence,
+      createdAt: new Date(row.created_at)
+    };
   }
 
   getHealthIssues(): HealthIssue[] {
     const issues: HealthIssue[] = [];
-    
-    // Mock some health checks
-    for (const track of this.tracks.values()) {
+
+    // Check for tracks without analysis
+    const tracks = this.getAllTracks();
+    for (const track of tracks) {
       const analyses = this.getAnalysesByTrack(track.id);
       if (analyses.length === 0) {
         issues.push({
@@ -117,11 +298,12 @@ export class CleanCueDatabase {
         });
       }
     }
-    
+
     return issues;
   }
 
   close(): void {
-    console.log('Mock database closed');
+    this.db.close();
+    console.log('SQLite database closed');
   }
 }

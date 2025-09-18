@@ -51,10 +51,20 @@ def analyze_key(audio_path: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         y, sr = librosa.load(audio_path, sr=None)
         print("PROGRESS:30")
         
-        # Compute chromagram
-        chroma = librosa.feature.chroma_cqt(
-            y=y, sr=sr, hop_length=hop_length, n_chroma=n_chroma
-        )
+        # Compute chromagram - use STFT for better compatibility with low sample rates
+        try:
+            # Try CQT first for better frequency resolution
+            if sr >= 22050:  # Only use CQT for reasonable sample rates
+                chroma = librosa.feature.chroma_cqt(
+                    y=y, sr=sr, hop_length=hop_length, n_chroma=n_chroma
+                )
+            else:
+                raise Exception("Low sample rate, using STFT")
+        except Exception:
+            # Fallback to STFT-based chromagram for compatibility
+            chroma = librosa.feature.chroma_stft(
+                y=y, sr=sr, hop_length=hop_length, n_chroma=n_chroma
+            )
         print("PROGRESS:60")
         
         # Average chromagram over time
