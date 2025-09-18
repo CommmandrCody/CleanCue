@@ -152,6 +152,12 @@ export class CleanCueDatabase {
     return rows.map(row => this.rowToTrack(row));
   }
 
+  deleteTrack(id: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM tracks WHERE id = ?');
+    const result = stmt.run(id);
+    return result.changes > 0;
+  }
+
   private rowToTrack(row: any): Track {
     return {
       id: row.id,

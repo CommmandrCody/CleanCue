@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
   engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
+  deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
 
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => {
@@ -49,6 +50,7 @@ export interface ElectronAPI {
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
+  deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
   removeAllListeners: (channel: string) => void

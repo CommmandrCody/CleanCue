@@ -10,6 +10,7 @@ export interface ElectronAPI {
   engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number }>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
+  deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
   removeAllListeners: (channel: string) => void

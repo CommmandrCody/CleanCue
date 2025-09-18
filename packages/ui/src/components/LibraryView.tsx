@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Play, Music, Clock, Key, Zap } from 'lucide-react'
+import { Download, Play, Music, Clock, Key, Zap, Trash2, FolderMinus, X } from 'lucide-react'
 import clsx from 'clsx'
 
 interface Track {
@@ -66,6 +66,7 @@ const mockTracks: Track[] = [
 export function LibraryView({ onExport }: LibraryViewProps) {
   const [selectedTracks, setSelectedTracks] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const filteredTracks = mockTracks.filter(track =>
     track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -93,6 +94,31 @@ export function LibraryView({ onExport }: LibraryViewProps) {
     return 'text-green-400'
   }
 
+  const handleDeleteClick = () => {
+    if (selectedTracks.length > 0) {
+      setShowDeleteDialog(true)
+    }
+  }
+
+  const handleDeleteConfirm = async (deleteFiles: boolean) => {
+    try {
+      if (window.electronAPI) {
+        // Desktop app - call Electron IPC
+        await window.electronAPI.deleteTracks(selectedTracks, deleteFiles)
+      } else {
+        // Web app - call HTTP API (mock for now)
+        console.log(`Would delete ${selectedTracks.length} tracks with deleteFiles=${deleteFiles}`)
+      }
+
+      // Clear selection after successful delete
+      setSelectedTracks([])
+      setShowDeleteDialog(false)
+    } catch (error) {
+      console.error('Failed to delete tracks:', error)
+      // Keep dialog open on error so user can retry
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -101,19 +127,35 @@ export function LibraryView({ onExport }: LibraryViewProps) {
           <p className="text-gray-400">{filteredTracks.length} tracks</p>
         </div>
 
-        <button
-          onClick={onExport}
-          disabled={selectedTracks.length === 0}
-          className={clsx(
-            'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            selectedTracks.length > 0
-              ? 'bg-primary-600 hover:bg-primary-700 text-white'
-              : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-          )}
-        >
-          <Download className="h-4 w-4 inline mr-2" />
-          Export ({selectedTracks.length})
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleDeleteClick}
+            disabled={selectedTracks.length === 0}
+            className={clsx(
+              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              selectedTracks.length > 0
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            )}
+          >
+            <Trash2 className="h-4 w-4 inline mr-2" />
+            Delete ({selectedTracks.length})
+          </button>
+
+          <button
+            onClick={onExport}
+            disabled={selectedTracks.length === 0}
+            className={clsx(
+              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              selectedTracks.length > 0
+                ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            )}
+          >
+            <Download className="h-4 w-4 inline mr-2" />
+            Export ({selectedTracks.length})
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center space-x-4">
@@ -227,6 +269,72 @@ export function LibraryView({ onExport }: LibraryViewProps) {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center">
+                <Trash2 className="h-5 w-5 mr-2 text-red-400" />
+                Delete Tracks
+              </h3>
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-gray-300 mb-6">
+              You are about to delete {selectedTracks.length} track{selectedTracks.length > 1 ? 's' : ''}.
+              Choose how you want to proceed:
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <button
+                onClick={() => handleDeleteConfirm(false)}
+                className="w-full p-4 bg-yellow-900/20 hover:bg-yellow-900/30 border border-yellow-600 rounded-lg text-left transition-colors"
+              >
+                <div className="flex items-start space-x-3">
+                  <FolderMinus className="h-5 w-5 text-yellow-400 mt-0.5" />
+                  <div>
+                    <div className="font-medium text-yellow-200">Remove from Library</div>
+                    <div className="text-sm text-yellow-300/80">
+                      Remove tracks from CleanCue but keep files on disk
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleDeleteConfirm(true)}
+                className="w-full p-4 bg-red-900/20 hover:bg-red-900/30 border border-red-600 rounded-lg text-left transition-colors"
+              >
+                <div className="flex items-start space-x-3">
+                  <Trash2 className="h-5 w-5 text-red-400 mt-0.5" />
+                  <div>
+                    <div className="font-medium text-red-200">Delete Files Permanently</div>
+                    <div className="text-sm text-red-300/80">
+                      Remove from library AND delete files from disk (cannot be undone)
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

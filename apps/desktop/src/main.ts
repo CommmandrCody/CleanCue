@@ -337,6 +337,28 @@ class CleanCueApp {
         return { success: false, error: (error as Error).message }
       }
     })
+
+    ipcMain.handle('engine-delete-tracks', async (_, trackIds: string[], deleteFiles: boolean = false) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.deleteTracks(trackIds, deleteFiles)
+        return {
+          success: true,
+          result: {
+            removedFromLibrary: result.removedFromLibrary,
+            deletedFiles: result.deletedFiles,
+            errors: result.errors
+          }
+        }
+      } catch (error) {
+        console.error('Delete tracks failed:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
   }
 
 

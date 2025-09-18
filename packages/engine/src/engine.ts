@@ -530,6 +530,56 @@ export class CleanCueEngine {
     return this.usbExporter.getDefaultProfiles();
   }
 
+  // Track deletion
+  async deleteTracks(trackIds: string[], deleteFiles: boolean = false): Promise<{ removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }> {
+    const result = {
+      removedFromLibrary: 0,
+      deletedFiles: 0,
+      errors: [] as Array<{ trackId: string; error: string }>
+    };
+
+    this.events.emit('tracks:delete:started', { trackIds, deleteFiles });
+
+    for (const trackId of trackIds) {
+      try {
+        const track = this.db.getTrack(trackId);
+        if (!track) {
+          result.errors.push({ trackId, error: 'Track not found in database' });
+          continue;
+        }
+
+        // If deleteFiles is true, try to delete the file from disk
+        if (deleteFiles) {
+          try {
+            await fs.unlink(track.path);
+            result.deletedFiles++;
+            this.events.emit('tracks:file:deleted', { trackId, path: track.path });
+          } catch (fileError) {
+            // File might not exist or no permission - log but continue with DB removal
+            result.errors.push({
+              trackId,
+              error: `Failed to delete file: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`
+            });
+          }
+        }
+
+        // Remove from database (this will cascade to analyses and cue points due to foreign keys)
+        this.db.deleteTrack(trackId);
+        result.removedFromLibrary++;
+        this.events.emit('tracks:removed:from:library', { trackId });
+
+      } catch (error) {
+        result.errors.push({
+          trackId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    this.events.emit('tracks:delete:completed', result);
+    return result;
+  }
+
   close(): void {
     this.workerPool.close();
     this.db.close();

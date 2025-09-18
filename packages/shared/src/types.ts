@@ -210,6 +210,10 @@ export interface CleanCueEventMap {
   'job:completed': AnalysisResult;
   'job:failed': AnalysisResult;
   'job:assigned': { jobId: string; workerId: number };
+  'tracks:delete:started': { trackIds: string[]; deleteFiles: boolean };
+  'tracks:file:deleted': { trackId: string; path: string };
+  'tracks:removed:from:library': { trackId: string };
+  'tracks:delete:completed': { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> };
 }
 
 export type CleanCueEvent = {
