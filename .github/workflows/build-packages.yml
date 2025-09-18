@@ -1,0 +1,268 @@
+name: Build CleanCue Packages
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  # Build Windows package
+  windows:
+    name: Windows Package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Python workers dependencies
+        run: |
+          cd packages/workers
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          cd ../..
+
+      - name: Build engine
+        run: |
+          cd packages/engine
+          pnpm build
+          cd ../..
+
+      - name: Build UI
+        run: |
+          cd packages/ui
+          npm run build
+          cd ../..
+
+      - name: Build Windows package
+        run: |
+          cd apps/desktop
+          npm run build
+        env:
+          CI: false
+
+      - name: List release files
+        run: |
+          cd apps/desktop
+          dir release
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanCue-Windows-Package
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+          retention-days: 30
+
+  # Build macOS package
+  macos:
+    name: macOS Package
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Python workers dependencies
+        run: |
+          cd packages/workers
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          cd ../..
+
+      - name: Build engine
+        run: |
+          cd packages/engine
+          pnpm build
+          cd ../..
+
+      - name: Build UI
+        run: |
+          cd packages/ui
+          npm run build
+          cd ../..
+
+      - name: Build macOS package
+        run: |
+          cd apps/desktop
+          npm run dist:mac
+        env:
+          CI: false
+
+      - name: List release files
+        run: |
+          cd apps/desktop
+          ls -la release/
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanCue-macOS-Package
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.dmg.blockmap
+          retention-days: 30
+
+  # Build Linux package
+  linux:
+    name: Linux Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Python workers dependencies
+        run: |
+          cd packages/workers
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          cd ../..
+
+      - name: Build engine
+        run: |
+          cd packages/engine
+          pnpm build
+          cd ../..
+
+      - name: Build UI
+        run: |
+          cd packages/ui
+          npm run build
+          cd ../..
+
+      - name: Build Linux package
+        run: |
+          cd apps/desktop
+          npm run dist:linux
+        env:
+          CI: false
+
+      - name: List release files
+        run: |
+          cd apps/desktop
+          ls -la release/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanCue-Linux-Package
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          retention-days: 30
+
+  # Create release (only on main branch push)
+  release:
+    name: Create Release
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: List artifacts
+        run: find ./artifacts -type f -ls
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: CleanCue v${{ steps.version.outputs.version }}
+          body: |
+            ## CleanCue v${{ steps.version.outputs.version }}
+
+            ### Downloads
+            - **Windows**: CleanCue-${{ steps.version.outputs.version }}-x64.exe
+            - **macOS**: CleanCue-${{ steps.version.outputs.version }}-arm64.dmg / CleanCue-${{ steps.version.outputs.version }}-x64.dmg
+            - **Linux**: CleanCue-${{ steps.version.outputs.version }}-x86_64.AppImage
+
+            ### Features
+            - Professional DJ library management
+            - BPM and key detection with Camelot wheel notation
+            - Audio analysis (tempo, key, energy levels)
+            - Export to M3U playlists
+            - Cross-platform desktop application
+
+            **Note**: Requires Python 3.8+ for audio analysis features
+          draft: false
+          prerelease: false
+          files: |
+            ./artifacts/**/*.exe
+            ./artifacts/**/*.dmg
+            ./artifacts/**/*.AppImage
+            ./artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Engine operations
   engineScan: (folderPath: string) => ipcRenderer.invoke('engine-scan', folderPath),
+  engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
   engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
 
@@ -45,6 +46,7 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<void>
   showItemInFolder: (fullPath: string) => Promise<void>
   engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number }>
+  engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
   onScanLibrary: (callback: (folderPath: string) => void) => void

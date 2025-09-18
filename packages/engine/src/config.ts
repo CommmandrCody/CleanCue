@@ -52,7 +52,7 @@ export class ConfigManager {
           }
         },
         energy: {
-          enabled: false,
+          enabled: true,
           parameters: {
             windowSize: 1024,
             hopSize: 512

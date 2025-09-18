@@ -14,11 +14,21 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 - **Smart Metadata Parsing**: DJ-optimized filename and tag extraction
 
 ### 🎛️ **Universal Export System**
+- **USB Export**: Copy tracks to USB/external drives with custom filename templates and character normalization
 - **M3U (Universal)**: Standard playlist format with metadata
 - **Serato DJ**: Native crate format with BPM/key preservation
 - **Engine DJ**: XML format with cue points and metadata
 - **Rekordbox**: Pioneer XML with tempo and key data
 - **Traktor Pro**: NML format with full metadata support
+
+### 💾 **USB Export (NEW in v0.2.0)**
+- **Custom Filename Templates**: Use metadata in filenames like `{artist} - {title} [{bpm}] ({key})`
+- **Character Normalization**: Remove accents, special characters, and ensure filesystem compatibility
+- **Export Profiles**: Pre-configured templates for different DJ setups (Standard, Serato, Rekordbox, etc.)
+- **Folder Organization**: Organize by artist, genre, or custom folder structures
+- **File Operations**: Copy, move, hard link, or symbolic link options
+- **Backup Protection**: Optional backup of original files before processing
+- **Conflict Resolution**: Intelligent handling of duplicate filenames
 
 ### 🔎 **Duplicate Detection**
 - **Multi-Strategy Analysis**: Audio fingerprinting, metadata, and file hash comparison
@@ -42,8 +52,8 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 
 ### Desktop App (Recommended)
 1. Download the latest release for your platform:
-   - **macOS**: `CleanCue-0.1.0.dmg` (Intel) or `CleanCue-0.1.0-arm64.dmg` (Apple Silicon)
-   - **Windows**: `CleanCue-0.1.0-x64.exe` (64-bit) or `CleanCue-0.1.0-ia32.exe` (32-bit)
+   - **macOS**: `CleanCue-0.2.0.dmg` (Intel) or `CleanCue-0.2.0-arm64.dmg` (Apple Silicon)
+   - **Windows**: `CleanCue-0.2.0-x64.exe` (64-bit) or `CleanCue-0.2.0-ia32.exe` (32-bit)
 2. Install and launch CleanCue
 3. Click "Scan Library" and select your music folder
 4. Let CleanCue analyze your tracks (BPM, key, energy)
@@ -93,7 +103,7 @@ pnpm dev:desktop     # Start desktop app with hot reload
 Export your library to multiple DJ software formats for backup and collaboration with other DJs.
 
 ### Mobile DJ Setup
-Quickly scan and organize large music collections, detect duplicates, and create USB-ready libraries.
+Quickly scan and organize large music collections, detect duplicates, and create USB-ready libraries with custom filename templates and normalized characters for maximum compatibility.
 
 ### Radio Show Preparation
 Analyze energy levels and harmonic keys for seamless transitions and professional mixes.

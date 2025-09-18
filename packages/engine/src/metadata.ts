@@ -349,7 +349,7 @@ export class MetadataExtractor {
 
     for (const field of stringFields) {
       if (metadata[field] && typeof metadata[field] === 'string') {
-        metadata[field] = this.cleanString(metadata[field] as string) as any;
+        (metadata as any)[field] = this.cleanString(metadata[field] as string);
       }
     }
   }

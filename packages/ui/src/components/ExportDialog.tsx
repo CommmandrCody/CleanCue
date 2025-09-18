@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { X, Download, FileText, Music, Settings, CheckCircle } from 'lucide-react'
+import { X, Download, FileText, Music, Settings, CheckCircle, HardDrive } from 'lucide-react'
 import clsx from 'clsx'
 
 interface ExportDialogProps {
@@ -16,6 +16,14 @@ interface ExportFormat {
 }
 
 const exportFormats: ExportFormat[] = [
+  {
+    id: 'usb',
+    name: 'USB Export',
+    description: 'Copy audio files to USB/external drive with custom naming',
+    icon: <HardDrive className="h-5 w-5" />,
+    extension: '',
+    features: ['Custom filenames', 'Character normalization', 'Folder organization', 'Metadata in filenames']
+  },
   {
     id: 'm3u',
     name: 'Universal M3U',
@@ -59,7 +67,7 @@ const exportFormats: ExportFormat[] = [
 ]
 
 export function ExportDialog({ onClose }: ExportDialogProps) {
-  const [selectedFormat, setSelectedFormat] = useState<string>('m3u')
+  const [selectedFormat, setSelectedFormat] = useState<string>('usb')
   const [exportPath, setExportPath] = useState('')
   const [playlistName, setPlaylistName] = useState('CleanCue Export')
   const [includeMetadata, setIncludeMetadata] = useState(true)
@@ -68,6 +76,12 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
   const [exporting, setExporting] = useState(false)
   const [exportComplete, setExportComplete] = useState(false)
   const folderInputRef = useRef<HTMLInputElement>(null)
+
+  // USB export specific state
+  const [usbProfile, setUsbProfile] = useState('dj_standard')
+  const [filenameTemplate, setFilenameTemplate] = useState('{artist} - {title}')
+  const [fileAction, setFileAction] = useState('copy')
+  const [backupOriginal, setBackupOriginal] = useState(false)
 
   const selectedFormatData = exportFormats.find(f => f.id === selectedFormat)
 
@@ -245,37 +259,98 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
               </div>
 
               {/* Options */}
-              <div className="space-y-3">
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={includeMetadata}
-                    onChange={(e) => setIncludeMetadata(e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
-                  />
-                  <span className="text-sm">Include metadata (BPM, key, genre)</span>
-                </label>
+              {selectedFormat === 'usb' ? (
+                <div className="space-y-4">
+                  {/* USB Profile */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Export Profile</label>
+                    <select
+                      value={usbProfile}
+                      onChange={(e) => setUsbProfile(e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="dj_standard">DJ Standard</option>
+                      <option value="organized_folders">Organized Folders</option>
+                      <option value="genre_organized">Genre Organized</option>
+                      <option value="serato_optimized">Serato Optimized</option>
+                      <option value="rekordbox_optimized">Rekordbox Optimized</option>
+                    </select>
+                  </div>
 
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={includeCues}
-                    onChange={(e) => setIncludeCues(e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
-                  />
-                  <span className="text-sm">Include cue points</span>
-                </label>
+                  {/* Filename Template */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Filename Template</label>
+                    <input
+                      type="text"
+                      value={filenameTemplate}
+                      onChange={(e) => setFilenameTemplate(e.target.value)}
+                      placeholder="{artist} - {title}"
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Available: {'{artist}'}, {'{title}'}, {'{album}'}, {'{bpm}'}, {'{key}'}, {'{genre}'}
+                    </p>
+                  </div>
 
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={useRelativePaths}
-                    onChange={(e) => setUseRelativePaths(e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
-                  />
-                  <span className="text-sm">Use relative paths (portable)</span>
-                </label>
-              </div>
+                  {/* File Action */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">File Action</label>
+                    <select
+                      value={fileAction}
+                      onChange={(e) => setFileAction(e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="copy">Copy files</option>
+                      <option value="move">Move files</option>
+                      <option value="hardlink">Create hard links</option>
+                      <option value="symlink">Create symbolic links</option>
+                    </select>
+                  </div>
+
+                  {/* Backup Option */}
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={backupOriginal}
+                      onChange={(e) => setBackupOriginal(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                    />
+                    <span className="text-sm">Backup original files before processing</span>
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={includeMetadata}
+                      onChange={(e) => setIncludeMetadata(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                    />
+                    <span className="text-sm">Include metadata (BPM, key, genre)</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={includeCues}
+                      onChange={(e) => setIncludeCues(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                    />
+                    <span className="text-sm">Include cue points</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={useRelativePaths}
+                      onChange={(e) => setUseRelativePaths(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                    />
+                    <span className="text-sm">Use relative paths (portable)</span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Format Info */}

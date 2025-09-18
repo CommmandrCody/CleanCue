@@ -4,12 +4,12 @@ packages:
   - packages/workers
   - packages/ui
   - apps/*
-  # CLI temporarily excluded pending TypeScript fixes
 
 auto-install-peers: true
 
 ignoredBuiltDependencies:
   - better-sqlite3
+  - electron
   - esbuild
 
 prefer-workspace-packages: true

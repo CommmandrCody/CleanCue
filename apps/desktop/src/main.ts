@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Menu, ipcMain, dialog, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -11,9 +10,37 @@ if (require('electron-squirrel-startup')) {
 class CleanCueApp {
   private mainWindow: BrowserWindow | null = null
   private isDev = process.argv.includes('--dev')
+  private engine: any = null
 
   constructor() {
     this.setupApp()
+  }
+
+  private async initializeEngine() {
+    if (!this.engine) {
+      console.log('Initializing real CleanCue engine...')
+      try {
+        // Import CleanCue engine using CommonJS require
+        const { CleanCueEngine } = require('@cleancue/engine')
+
+        // Initialize with configuration - it will create default config automatically
+        this.engine = new CleanCueEngine()
+
+        // Update workers path to point to the correct Python workers location
+        const workersPath = path.resolve(__dirname, '../../packages/workers')
+        this.engine.updateConfig({
+          workers: {
+            pythonPath: 'python3',
+            workersPath: workersPath
+          }
+        })
+
+        console.log('CleanCue engine initialized successfully')
+      } catch (error) {
+        console.error('Failed to initialize CleanCue engine:', error)
+        throw error
+      }
+    }
   }
 
   private setupApp() {
@@ -23,10 +50,6 @@ class CleanCueApp {
       this.setupMenu()
       this.setupIPC()
 
-      // Auto-updater setup (only in production)
-      if (!this.isDev) {
-        this.setupAutoUpdater()
-      }
 
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the dock icon is clicked
@@ -73,7 +96,7 @@ class CleanCueApp {
       this.mainWindow.loadURL('http://localhost:3000')
       this.mainWindow.webContents.openDevTools()
     } else {
-      this.mainWindow.loadFile(path.join(__dirname, '../../../packages/ui/dist/index.html'))
+      this.mainWindow.loadFile(path.join(__dirname, 'ui/index.html'))
     }
 
     // Show window when ready
@@ -188,7 +211,7 @@ class CleanCueApp {
           {
             label: 'Learn More',
             click: async () => {
-              await shell.openExternal('https://github.com/cleancue/cleancue')
+              await shell.openExternal('https://github.com/CommmandrCody/CleanCue')
             }
           }
         ]
@@ -231,47 +254,91 @@ class CleanCueApp {
 
     // Handle engine operations (scan, analyze, export)
     ipcMain.handle('engine-scan', async (_, folderPath: string) => {
-      // This would connect to the CleanCue engine
-      // For now, return mock progress
-      return { success: true, tracksFound: 156 }
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+        const result = await this.engine.scanLibrary([folderPath])
+        return {
+          success: true,
+          tracksFound: result.tracksScanned,
+          tracksAdded: result.tracksAdded,
+          tracksUpdated: result.tracksUpdated,
+          errors: result.errors
+        }
+      } catch (error) {
+        console.error('Scan failed:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('engine-get-tracks', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+        const tracks = this.engine.getAllTracks()
+        return { success: true, tracks }
+      } catch (error) {
+        console.error('Failed to get tracks:', error)
+        return { success: false, error: (error as Error).message }
+      }
     })
 
     ipcMain.handle('engine-analyze', async (_, trackIds: string[]) => {
-      // This would trigger audio analysis
-      return { success: true, analyzed: trackIds.length }
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // Analyze specific tracks with BPM and key detection
+        let analyzed = 0
+        for (const trackId of trackIds) {
+          try {
+            await this.engine.analyzeTrack(trackId, ['tempo', 'key', 'energy'])
+            analyzed++
+          } catch (error) {
+            console.warn(`Failed to analyze track ${trackId}:`, error)
+          }
+        }
+
+        return { success: true, analyzed }
+      } catch (error) {
+        console.error('Analysis failed:', error)
+        return { success: false, error: (error as Error).message }
+      }
     })
 
     ipcMain.handle('engine-export', async (_, options: any) => {
-      // This would trigger export
-      return { success: true, path: options.outputPath }
-    })
-  }
-
-  private setupAutoUpdater() {
-    autoUpdater.checkForUpdatesAndNotify()
-
-    autoUpdater.on('update-available', () => {
-      dialog.showMessageBox(this.mainWindow!, {
-        type: 'info',
-        title: 'Update available',
-        message: 'A new version of CleanCue is available. It will be downloaded in the background.',
-        buttons: ['OK']
-      })
-    })
-
-    autoUpdater.on('update-downloaded', () => {
-      dialog.showMessageBox(this.mainWindow!, {
-        type: 'info',
-        title: 'Update ready',
-        message: 'Update downloaded. The application will restart to apply the update.',
-        buttons: ['Restart Now', 'Later']
-      }).then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall()
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
         }
-      })
+
+        // Create export format object
+        const format = {
+          name: options.format || 'm3u',
+          extension: options.format === 'serato' ? '.m3u' : '.m3u'
+        }
+
+        await this.engine.exportLibrary(format, {
+          outputPath: options.outputPath,
+          relativePaths: options.relativePaths || false,
+          includeCues: options.includeCues || false
+        })
+
+        return { success: true, path: options.outputPath }
+      } catch (error) {
+        console.error('Export failed:', error)
+        return { success: false, error: (error as Error).message }
+      }
     })
   }
+
 
   private async handleScanLibrary() {
     const folderPath = await dialog.showOpenDialog(this.mainWindow!, {
