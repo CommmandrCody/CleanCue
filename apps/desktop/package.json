@@ -39,7 +39,7 @@
   "build": {
     "appId": "com.cleancue.desktop",
     "productName": "CleanCue",
-    "copyright": "Copyright © 2024 CleanCue",
+    "copyright": "Copyright © 2025 CleanCue",
     "directories": {
       "output": "release"
     },
