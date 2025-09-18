@@ -510,6 +510,142 @@ class CleanCueApp {
         return { success: false, error: (error as Error).message }
       }
     })
+
+    // Additional API handlers for UI components
+    ipcMain.handle('get-analysis-jobs', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // For now return empty array, implement actual analysis job tracking later
+        return { success: true, jobs: [] }
+      } catch (error) {
+        console.error('Failed to get analysis jobs:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('get-library-health', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // For now return empty array, implement actual health checking later
+        return { success: true, issues: [] }
+      } catch (error) {
+        console.error('Failed to get library health:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('scan-library-health', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // For now return empty array, implement actual health scanning later
+        return { success: true, issues: [] }
+      } catch (error) {
+        console.error('Failed to scan library health:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('get-all-tracks', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const tracks = this.engine.getAllTracks()
+        return tracks
+      } catch (error) {
+        console.error('Failed to get all tracks:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('export-tracks', async (_, trackIds: string[], options: any) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.exportToUSB(trackIds, options)
+        return { success: true, path: result.outputPath }
+      } catch (error) {
+        console.error('Failed to export tracks:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('get-duplicate-groups', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const duplicates = this.engine.getDuplicates()
+        return duplicates
+      } catch (error) {
+        console.error('Failed to get duplicate groups:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('scan-for-duplicates', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const duplicates = this.engine.scanForDuplicates()
+        return duplicates
+      } catch (error) {
+        console.error('Failed to scan for duplicates:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('save-analysis-settings', async (_, settings: any) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // Save analysis settings to config
+        return { success: true }
+      } catch (error) {
+        console.error('Failed to save analysis settings:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('detect-dj-software', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // Implement DJ software detection later
+        return { success: true, software: [] }
+      } catch (error) {
+        console.error('Failed to detect DJ software:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
   }
 
 

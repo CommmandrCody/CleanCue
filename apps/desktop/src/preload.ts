@@ -18,15 +18,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Engine operations
   engineScan: (folderPath: string) => ipcRenderer.invoke('engine-scan', folderPath),
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
-  getAllTracks: () => ipcRenderer.invoke('engine-get-tracks'),
+  getAllTracks: () => ipcRenderer.invoke('get-all-tracks'),
   engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
-  exportTracks: (trackIds: string[], options: any) => ipcRenderer.invoke('engine-export', { trackIds, ...options }),
+  exportTracks: (trackIds: string[], options: any) => ipcRenderer.invoke('export-tracks', trackIds, options),
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
-  getDuplicateGroups: () => ipcRenderer.invoke('engine-get-duplicates'),
-  scanForDuplicates: () => ipcRenderer.invoke('engine-scan-duplicates'),
-  saveAnalysisSettings: (settings: any) => ipcRenderer.invoke('engine-save-analysis-settings', settings),
-  detectDJSoftware: () => ipcRenderer.invoke('engine-detect-dj-software'),
+  getDuplicateGroups: () => ipcRenderer.invoke('get-duplicate-groups'),
+  scanForDuplicates: () => ipcRenderer.invoke('scan-for-duplicates'),
+  saveAnalysisSettings: (settings: any) => ipcRenderer.invoke('save-analysis-settings', settings),
+  detectDJSoftware: () => ipcRenderer.invoke('detect-dj-software'),
+
+  // Additional API methods for UI components
+  getAnalysisJobs: () => ipcRenderer.invoke('get-analysis-jobs'),
+  getLibraryHealth: () => ipcRenderer.invoke('get-library-health'),
+  scanLibraryHealth: () => ipcRenderer.invoke('scan-library-health'),
 
   // STEM Separation operations
   stemCheckDependencies: () => ipcRenderer.invoke('stem-check-dependencies'),
