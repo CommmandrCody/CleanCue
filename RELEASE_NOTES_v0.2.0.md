@@ -1,9 +1,26 @@
 # CleanCue v0.2.0 Release Notes
 
-**Release Date:** September 18, 2024
+**Release Date:** September 18, 2025
 **Platform Support:** macOS (Intel + Apple Silicon), Windows x64, Linux (AppImage)
 
 ## 🎉 Major New Features
+
+### 🎛️ STEM Separation (NEW!)
+Professional audio stem separation using state-of-the-art Demucs Hybrid technology:
+
+- **Real Audio Processing:** No mock data - genuine Demucs Hybrid model integration
+- **Professional Quality:** High-fidelity stem separation into vocals, drums, bass, and other instruments
+- **Complete TypeScript Implementation:** Zero compilation errors, full type safety
+- **Advanced Settings Interface:** Comprehensive controls matching professional DJ software
+- **Database Integration:** Full persistence and tracking of separation jobs
+- **Progress Tracking:** Real-time status updates and progress monitoring
+- **Multiple Models Available:**
+  - Hybrid Demucs (htdemucs) - High-quality transformer separation
+  - Hybrid Demucs FT (htdemucs_ft) - Fine-tuned for improved quality
+  - Hybrid Demucs 6-Stem (htdemucs_6s) - Extended separation including piano
+  - MDX Extra (mdx_extra) - Specialized model for specific use cases
+- **Export Options:** WAV, FLAC, and MP3 output formats with quality control
+- **Professional UI:** Interface designed to match Mixed In Key and other pro tools
 
 ### 🔧 USB Export System
 Complete file export system for DJ workflows with advanced customization:
