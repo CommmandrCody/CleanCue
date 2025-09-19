@@ -17,6 +17,7 @@
     "test:unit": "pnpm -r test",
     "test:ui": "pnpm --filter @cleancue/ui test",
     "test:e2e": "jest tests/",
+    "test:ui-integration": "jest tests/ui-integration.test.js --verbose",
     "test:build": "./scripts/test-build.sh",
     "test:health": "./scripts/health-check.sh",
     "test:all": "pnpm run test:health && pnpm run test:unit && pnpm run test:ui && pnpm run test:build",

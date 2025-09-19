@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Play, Music, Clock, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3 } from 'lucide-react'
+import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3 } from 'lucide-react'
 import clsx from 'clsx'
 import { ExportDialog } from './ExportDialog'
 import { AudioPlayer } from './AudioPlayer'
@@ -117,11 +117,6 @@ export function LibraryView({}: LibraryViewProps) {
     }
   }
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
 
   const getEnergyColor = (energy: number) => {
     if (energy >= 80) return 'text-red-400'
