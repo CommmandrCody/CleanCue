@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2 } from 'lucide-react'
 
 interface SettingsProps {
   isOpen: boolean
@@ -17,6 +17,16 @@ interface AppSettings {
     scanOnStartup: boolean
     watchFolders: boolean
     extensions: string[]
+  }
+  workflow: {
+    enableNormalization: boolean
+    normalizationPreset: 'dj' | 'broadcast' | 'streaming' | 'custom'
+    customTargetLufs: number
+    customTargetPeak: number
+    autoNormalizeOnImport: boolean
+    createBackups: boolean
+    normalizedSuffix: string
+    outputFormat: 'wav' | 'flac' | 'aiff'
   }
   analysis: {
     autoAnalyze: boolean
@@ -43,6 +53,16 @@ const defaultSettings: AppSettings = {
     watchFolders: false,
     extensions: ['mp3', 'flac', 'wav', 'm4a', 'aif', 'aiff', 'ogg']
   },
+  workflow: {
+    enableNormalization: true,
+    normalizationPreset: 'dj',
+    customTargetLufs: -12,
+    customTargetPeak: -1,
+    autoNormalizeOnImport: false,
+    createBackups: true,
+    normalizedSuffix: '_normalized',
+    outputFormat: 'wav'
+  },
   analysis: {
     autoAnalyze: false,
     analyzeOnImport: false,
@@ -58,7 +78,7 @@ const defaultSettings: AppSettings = {
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
-  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'analysis' | 'ui'>('library')
+  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'ui'>('workflow')
 
   if (!isOpen) return null
 
@@ -93,6 +113,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   }
 
   const tabs = [
+    { id: 'workflow', label: 'DJ Workflow', icon: Workflow },
     { id: 'library', label: 'Library', icon: Music },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'analysis', label: 'Analysis', icon: SettingsIcon },
@@ -139,6 +160,134 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
           {/* Content */}
           <div className="flex-1 p-6 overflow-y-auto">
+            {activeTab === 'workflow' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-medium mb-4">DJ Workflow Settings</h3>
+                <div className="bg-gray-700 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Workflow className="h-5 w-5 text-primary-400" />
+                    <span className="font-medium text-primary-400">Discover → Normalize → Analyze → Review → Export</span>
+                  </div>
+                  <p className="text-sm text-gray-300">Configure your professional DJ workflow pipeline for optimal track preparation.</p>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Normalization Settings */}
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Volume2 className="h-5 w-5 text-primary-400" />
+                      <h4 className="text-md font-medium">Audio Normalization</h4>
+                    </div>
+
+                    <label className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.workflow.enableNormalization}
+                        onChange={(e) => updateSettings('workflow', { enableNormalization: e.target.checked })}
+                        className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                      />
+                      <div className="flex flex-col">
+                        <span>Enable audio normalization</span>
+                        <span className="text-xs text-gray-400">Automatically analyze and normalize track loudness</span>
+                      </div>
+                    </label>
+
+                    {settings.workflow.enableNormalization && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Normalization Preset</label>
+                          <select
+                            value={settings.workflow.normalizationPreset}
+                            onChange={(e) => updateSettings('workflow', { normalizationPreset: e.target.value })}
+                            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="dj">DJ (-12 LUFS) - Optimized for club play</option>
+                            <option value="streaming">Streaming (-14 LUFS) - Spotify/Apple Music</option>
+                            <option value="broadcast">Broadcast (-23 LUFS) - EBU R128 standard</option>
+                            <option value="custom">Custom - Set your own targets</option>
+                          </select>
+                        </div>
+
+                        {settings.workflow.normalizationPreset === 'custom' && (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Target LUFS</label>
+                              <input
+                                type="number"
+                                min="-30"
+                                max="-6"
+                                value={settings.workflow.customTargetLufs}
+                                onChange={(e) => updateSettings('workflow', { customTargetLufs: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Target Peak (dB)</label>
+                              <input
+                                type="number"
+                                min="-6"
+                                max="0"
+                                value={settings.workflow.customTargetPeak}
+                                onChange={(e) => updateSettings('workflow', { customTargetPeak: parseInt(e.target.value) })}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-3">
+                          <label className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              checked={settings.workflow.autoNormalizeOnImport}
+                              onChange={(e) => updateSettings('workflow', { autoNormalizeOnImport: e.target.checked })}
+                              className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span>Auto-normalize on import</span>
+                          </label>
+
+                          <label className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              checked={settings.workflow.createBackups}
+                              onChange={(e) => updateSettings('workflow', { createBackups: e.target.checked })}
+                              className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span>Create backup files</span>
+                          </label>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Normalized File Suffix</label>
+                            <input
+                              type="text"
+                              value={settings.workflow.normalizedSuffix}
+                              onChange={(e) => updateSettings('workflow', { normalizedSuffix: e.target.value })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="_normalized"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Output Format</label>
+                            <select
+                              value={settings.workflow.outputFormat}
+                              onChange={(e) => updateSettings('workflow', { outputFormat: e.target.value })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="wav">WAV (Uncompressed)</option>
+                              <option value="flac">FLAC (Lossless)</option>
+                              <option value="aiff">AIFF (Uncompressed)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'library' && (
               <div className="space-y-6">
                 <h3 className="text-lg font-medium mb-4">Library Settings</h3>
