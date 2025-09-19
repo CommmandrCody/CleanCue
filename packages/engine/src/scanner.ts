@@ -8,10 +8,26 @@ let parseFile: any = null;
 async function getParseFile() {
   if (parseFile === null) {
     try {
-      const musicMetadata = await import('music-metadata');
+      // Try different import methods for Electron compatibility
+      let musicMetadata;
+      try {
+        // First try ES module import
+        musicMetadata = await import('music-metadata');
+      } catch (esError) {
+        try {
+          // Fallback to CommonJS require
+          musicMetadata = require('music-metadata');
+        } catch (cjsError) {
+          console.warn('music-metadata not available via import or require:', esError.message, cjsError.message);
+          parseFile = false;
+          return null;
+        }
+      }
+
       parseFile = musicMetadata.parseFile;
+      console.log('Successfully loaded music-metadata parseFile function');
     } catch (error) {
-      console.warn('music-metadata not available, metadata extraction will be limited');
+      console.warn('music-metadata not available, metadata extraction will be limited:', error.message);
       parseFile = false; // Mark as failed
     }
   }
@@ -116,9 +132,17 @@ export class FileScanner {
     
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
+        let fullPath: string;
+        try {
+          // Handle Unicode filenames properly by normalizing them
+          const normalizedName = Buffer.from(entry.name, 'utf8').toString('utf8');
+          fullPath = path.join(dirPath, normalizedName);
+        } catch (unicodeError) {
+          console.warn(`Skipping file with invalid Unicode characters: ${entry.name}`);
+          continue;
+        }
         
         if (entry.isDirectory()) {
           // Check if we should include subdirectories

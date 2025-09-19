@@ -39,6 +39,7 @@ export function LibraryImport({ isOpen, onClose }: LibraryImportProps) {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, currentFile: '' })
   const [showSettings, setShowSettings] = useState(false)
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const scanInProgressRef = useRef(false)
 
   if (!isOpen) return null
 
@@ -47,6 +48,15 @@ export function LibraryImport({ isOpen, onClose }: LibraryImportProps) {
       if (window.electronAPI) {
         const selectedPath = await window.electronAPI.selectFolder()
         if (selectedPath) {
+          console.log(`[LibraryImport] 🎯 addSourceFolder called for path: ${selectedPath}`)
+
+          // Prevent multiple concurrent scans
+          if (scanInProgressRef.current) {
+            console.log(`[LibraryImport] ⚠️ Scan already in progress, ignoring duplicate call`)
+            return
+          }
+
+          scanInProgressRef.current = true
           const newSource: ImportSource = {
             id: Date.now().toString(),
             path: selectedPath,
@@ -58,24 +68,41 @@ export function LibraryImport({ isOpen, onClose }: LibraryImportProps) {
           setSources(prev => [...prev, newSource])
 
           // Scan folder for tracks
+          const callId = Math.random().toString(36).substring(7)
+          console.log(`[LibraryImport] 🚀 [${callId}] Calling engineScan with path: ${selectedPath}`)
           const scanResult = await window.electronAPI.engineScan(selectedPath)
+          console.log(`[LibraryImport] ✅ [${callId}] engineScan returned:`, scanResult)
+
+          console.log(`[LibraryImport] 📊 [${callId}] Processing scan result:`, {
+            success: scanResult.success,
+            tracksFound: scanResult.tracksFound,
+            tracksAdded: scanResult.tracksAdded,
+            tracksUpdated: scanResult.tracksUpdated,
+            errors: scanResult.errors
+          })
+
           if (scanResult.success) {
+            console.log(`[LibraryImport] ✅ [${callId}] Setting estimatedTracks to: ${scanResult.tracksFound}`)
             setSources(prev => prev.map(source =>
               source.id === newSource.id
                 ? { ...source, estimatedTracks: scanResult.tracksFound, status: 'ready' }
                 : source
             ))
           } else {
+            console.log(`[LibraryImport] ❌ [${callId}] Scan failed, setting error status`)
             setSources(prev => prev.map(source =>
               source.id === newSource.id
                 ? { ...source, status: 'error', error: 'Failed to scan folder' }
                 : source
             ))
           }
+
+          scanInProgressRef.current = false
         }
       }
     } catch (error) {
       console.error('Failed to add source folder:', error)
+      scanInProgressRef.current = false
     }
   }
 

@@ -9,7 +9,10 @@ import {
   HardDrive,
   RefreshCw,
   Search,
-  Info
+  Info,
+  CheckSquare,
+  Square,
+  Settings
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -27,8 +30,12 @@ interface HealthIssue {
 export function HealthDashboard() {
   const [issues, setIssues] = useState<HealthIssue[]>([])
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null)
+  const [selectedIssues, setSelectedIssues] = useState<string[]>([])
+  const [filterBySeverity, setFilterBySeverity] = useState<string | null>(null)
+  const [filterByType, setFilterByType] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [fixing, setFixing] = useState(false)
 
   useEffect(() => {
     loadHealthIssues()
@@ -102,11 +109,67 @@ export function HealthDashboard() {
     }
   }
 
-  const handleFixIssue = (issueId: string) => {
-    setIssues(prev => prev.filter(issue => issue.id !== issueId))
+  const handleFixIssue = async (issueId: string) => {
+    try {
+      if (window.electronAPI) {
+        const response = await window.electronAPI.fixHealthIssue(issueId)
+        if (response.success) {
+          setIssues(prev => prev.filter(issue => issue.id !== issueId))
+          setSelectedIssues(prev => prev.filter(id => id !== issueId))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fix issue:', error)
+    }
+  }
+
+  const handleFixAllSelected = async () => {
+    if (selectedIssues.length === 0) return
+
+    try {
+      setFixing(true)
+      for (const issueId of selectedIssues) {
+        await handleFixIssue(issueId)
+      }
+    } finally {
+      setFixing(false)
+    }
+  }
+
+  const handleSelectAll = () => {
+    const filteredIssues = getFilteredIssues()
+    if (selectedIssues.length === filteredIssues.length) {
+      setSelectedIssues([])
+    } else {
+      setSelectedIssues(filteredIssues.map(issue => issue.id))
+    }
+  }
+
+  // const handleToggleIssue = (issueId: string) => {
+  //   setSelectedIssues(prev =>
+  //     prev.includes(issueId)
+  //       ? prev.filter(id => id !== issueId)
+  //       : [...prev, issueId]
+  //   )
+  // }
+
+  const getFilteredIssues = () => {
+    let filtered = issues
+
+    if (filterBySeverity) {
+      filtered = filtered.filter(issue => issue.severity === filterBySeverity)
+    }
+
+    if (filterByType) {
+      filtered = filtered.filter(issue => issue.type === filterByType)
+    }
+
+    return filtered
   }
 
   const selectedIssueData = issues.find(i => i.id === selectedIssue)
+  const filteredIssues = getFilteredIssues()
+  const allFilteredSelected = filteredIssues.length > 0 && selectedIssues.length === filteredIssues.length
 
   return (
     <div className="space-y-6">
@@ -135,9 +198,18 @@ export function HealthDashboard() {
         </button>
       </div>
 
-      {/* Health Overview */}
+      {/* Health Overview - Clickable Filters */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4">
+        <button
+          onClick={() => {
+            setFilterBySeverity(null)
+            setFilterByType(null)
+          }}
+          className={clsx(
+            "bg-gray-800 rounded-lg p-4 text-left transition-all hover:bg-gray-700",
+            !filterBySeverity && !filterByType && "ring-2 ring-primary-500"
+          )}
+        >
           <div className="flex items-center space-x-3">
             <Activity className="h-8 w-8 text-primary-400" />
             <div>
@@ -145,9 +217,18 @@ export function HealthDashboard() {
               <div className="text-sm text-gray-400">Total Issues</div>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-gray-800 rounded-lg p-4">
+        <button
+          onClick={() => {
+            setFilterBySeverity(filterBySeverity === 'high' ? null : 'high')
+            setFilterByType(null)
+          }}
+          className={clsx(
+            "bg-gray-800 rounded-lg p-4 text-left transition-all hover:bg-gray-700",
+            filterBySeverity === 'high' && "ring-2 ring-red-500"
+          )}
+        >
           <div className="flex items-center space-x-3">
             <AlertTriangle className="h-8 w-8 text-red-400" />
             <div>
@@ -155,9 +236,18 @@ export function HealthDashboard() {
               <div className="text-sm text-gray-400">High Priority</div>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-gray-800 rounded-lg p-4">
+        <button
+          onClick={() => {
+            setFilterBySeverity(filterBySeverity === 'medium' ? null : 'medium')
+            setFilterByType(null)
+          }}
+          className={clsx(
+            "bg-gray-800 rounded-lg p-4 text-left transition-all hover:bg-gray-700",
+            filterBySeverity === 'medium' && "ring-2 ring-yellow-500"
+          )}
+        >
           <div className="flex items-center space-x-3">
             <AlertTriangle className="h-8 w-8 text-yellow-400" />
             <div>
@@ -165,9 +255,18 @@ export function HealthDashboard() {
               <div className="text-sm text-gray-400">Medium Priority</div>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-gray-800 rounded-lg p-4">
+        <button
+          onClick={() => {
+            setFilterBySeverity(filterBySeverity === 'low' ? null : 'low')
+            setFilterByType(null)
+          }}
+          className={clsx(
+            "bg-gray-800 rounded-lg p-4 text-left transition-all hover:bg-gray-700",
+            filterBySeverity === 'low' && "ring-2 ring-blue-500"
+          )}
+        >
           <div className="flex items-center space-x-3">
             <Info className="h-8 w-8 text-blue-400" />
             <div>
@@ -175,14 +274,41 @@ export function HealthDashboard() {
               <div className="text-sm text-gray-400">Low Priority</div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Issues List */}
         <div className="bg-gray-800 rounded-lg overflow-hidden">
           <div className="px-6 py-4 bg-gray-700 border-b border-gray-600">
-            <h3 className="font-medium">Health Issues</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Health Issues ({filteredIssues.length})</h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSelectAll}
+                  className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-300 hover:text-white transition-colors"
+                >
+                  {allFilteredSelected ? (
+                    <CheckSquare className="h-4 w-4" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
+                  <span>Select All</span>
+                </button>
+                {selectedIssues.length > 0 && (
+                  <button
+                    onClick={handleFixAllSelected}
+                    disabled={fixing}
+                    className="flex items-center space-x-2 px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm disabled:opacity-50"
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span>
+                      {fixing ? 'Fixing...' : `Fix ${selectedIssues.length} Selected`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="divide-y divide-gray-700 max-h-96 overflow-y-auto">

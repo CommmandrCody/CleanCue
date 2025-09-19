@@ -27,7 +27,8 @@
     "debug": "^4.3.4",
     "electron-squirrel-startup": "^1.0.1",
     "file-uri-to-path": "^2.0.0",
-    "ms": "^2.1.2"
+    "ms": "^2.1.2",
+    "music-metadata": "^11.8.3"
   },
   "devDependencies": {
     "@electron/get": "^4.0.2",
@@ -53,7 +54,8 @@
       "**/node_modules/bindings/**/*",
       "**/node_modules/file-uri-to-path/**/*",
       "**/node_modules/debug/**/*",
-      "**/node_modules/ms/**/*"
+      "**/node_modules/ms/**/*",
+      "**/node_modules/music-metadata/**/*"
     ],
     "extraResources": [
       {
@@ -101,6 +103,9 @@
       "requestedExecutionLevel": "asInvoker",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    "portable": {
+      "artifactName": "${productName}-${version}-${arch}-Portable.${ext}"
+    },
     "linux": {
       "target": [
         {
@@ -115,7 +120,9 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "category": "AudioVideo",
+      "artifactName": "cleancue-${version}-${arch}.${ext}"
     }
   }
 }

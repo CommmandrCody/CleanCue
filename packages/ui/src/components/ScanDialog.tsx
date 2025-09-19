@@ -45,6 +45,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
   const [skipDuplicateDetection, setSkipDuplicateDetection] = useState(true)
   const [autoAnalyzeBpmKey, setAutoAnalyzeBpmKey] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const scanInProgressRef = useRef(false)
 
   // Set up event listeners for scan progress
   useEffect(() => {
@@ -107,10 +108,11 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
         tracksAdded: data?.tracksAdded || 0,
         tracksUpdated: data?.tracksUpdated || 0,
         errors: data?.errors || [],
-        duration: endTime - (Date.now() - 1000), // Fallback duration
+        duration: endTime - (progress.scanStartTime || endTime),
         path: selectedPath
       }));
 
+      scanInProgressRef.current = false
       setScanning(false);
     };
 
@@ -164,6 +166,15 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
   const handleStartScan = async () => {
     if (!selectedPath) return
 
+    console.log(`[UI] 🎯 handleStartScan called for path: ${selectedPath}`)
+
+    // Prevent multiple concurrent scans
+    if (scanInProgressRef.current) {
+      console.log(`[UI] ⚠️ Scan already in progress, ignoring duplicate call`)
+      return
+    }
+
+    scanInProgressRef.current = true
     setScanning(true)
     setScanSummary(null)
     setScanLogs([`🚀 Starting scan of: ${selectedPath}`])
@@ -185,25 +196,20 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
           skipDuplicateDetection,
           autoAnalyzeBpmKey
         }
+        const callId = Math.random().toString(36).substring(7)
+        console.log(`[UI] 🚀 [${callId}] Calling engineScan with path: ${selectedPath} and options:`, scanOptions)
         const scanResult = await window.electronAPI.engineScan(selectedPath, scanOptions)
+        console.log(`[UI] ✅ [${callId}] engineScan returned:`, scanResult)
 
-        if (scanResult.success) {
-          setProgress({
-            phase: 'complete',
-            processed: scanResult.tracksFound,
-            total: scanResult.tracksFound,
-            errors: [],
-            newTracks: scanResult.tracksFound,
-            duplicates: 0,
-            currentFile: undefined
-          })
-        } else {
+        // Only handle errors from direct API call - success results come via events
+        if (!scanResult.success) {
           setProgress(prev => ({
             ...prev,
             phase: 'complete',
             errors: [scanResult.error || 'Scan failed']
           }))
         }
+        // Note: Success results are handled via scan:completed event listener
       }
     } catch (error) {
       console.error('Scan failed:', error)
@@ -213,6 +219,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
         errors: ['Failed to scan library']
       }))
     } finally {
+      scanInProgressRef.current = false
       setScanning(false)
     }
   }
@@ -242,23 +249,15 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
         // Then scan again with improved parsing
         const scanResult = await window.electronAPI.engineScan(selectedPath)
 
-        if (scanResult.success) {
-          setProgress({
-            phase: 'complete',
-            processed: scanResult.tracksFound,
-            total: scanResult.tracksFound,
-            errors: [],
-            newTracks: scanResult.tracksFound,
-            duplicates: 0,
-            currentFile: undefined
-          })
-        } else {
+        // Only handle errors from direct API call - success results come via events
+        if (!scanResult.success) {
           setProgress(prev => ({
             ...prev,
             phase: 'complete',
             errors: [scanResult.error || 'Rescan failed']
           }))
         }
+        // Note: Success results are handled via scan:completed event listener
       }
     } catch (error) {
       console.error('Rescan failed:', error)
@@ -268,6 +267,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
         errors: ['Failed to rescan library']
       }))
     } finally {
+      scanInProgressRef.current = false
       setScanning(false)
     }
   }
@@ -306,6 +306,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Close dialog"
           >
             <X className="h-5 w-5" />
           </button>
@@ -327,6 +328,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
                 onClick={handleSelectFolder}
                 disabled={scanning}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-md transition-colors disabled:opacity-50"
+                aria-label="Browse for folder"
               >
                 <Folder className="h-4 w-4" />
               </button>

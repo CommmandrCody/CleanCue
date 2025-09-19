@@ -90,7 +90,9 @@ export class CleanCueEngine {
 
   // Library scanning
   async scanLibrary(paths: string[]): Promise<ScanResult> {
-    console.log(`[ENGINE] Starting library scan for paths:`, paths);
+    const scanId = Math.random().toString(36).substring(7)
+    console.log(`[ENGINE] 🔍 [${scanId}] Starting library scan for paths:`, paths);
+    console.log(`[ENGINE] 🔍 [${scanId}] Call stack:`, new Error().stack);
     this.events.emit('scan:started', { paths });
 
     const result: ScanResult = {
@@ -206,10 +208,24 @@ export class CleanCueEngine {
           result.tracksScanned++;
           console.log(`[ENGINE] 📊 Progress: ${result.tracksScanned}/${files.length} processed (${result.tracksAdded} added, ${result.tracksUpdated} updated)\n`);
         } catch (error) {
-          console.error(`[ENGINE] Error processing file ${file.path}:`, error);
+          console.error(`[ENGINE] ❌ CRITICAL: Failed to process file during scan`);
+          console.error(`[ENGINE] ❌ File Path: ${file.path}`);
+          console.error(`[ENGINE] ❌ File Info:`, {
+            sizeBytes: file.sizeBytes,
+            hash: file.hash?.substring(0, 12),
+            modifiedAt: file.modifiedAt?.toISOString(),
+            extension: path.extname(file.path)
+          });
+          console.error(`[ENGINE] ❌ Error Details:`, {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            errorType: error?.constructor?.name || typeof error
+          });
+
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           result.errors.push({
             path: file.path,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: `File processing failed: ${errorMessage}`
           });
         }
       }
@@ -221,7 +237,7 @@ export class CleanCueEngine {
       });
     }
 
-    console.log(`[ENGINE] Scan completed. Final results:`, result);
+    console.log(`[ENGINE] 🔍 [${scanId}] Scan completed. Final results:`, result);
     this.events.emit('scan:completed', result);
     return result;
   }

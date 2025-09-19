@@ -53,6 +53,39 @@ export class CleanCueDatabase {
     return this.db !== null;
   }
 
+  private validateTrackData(track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>): string[] {
+    const errors: string[] = [];
+
+    // Check required string fields
+    if (!track.path || typeof track.path !== 'string' || track.path.trim() === '') {
+      errors.push('path is required and must be non-empty');
+    }
+
+    if (!track.hash || typeof track.hash !== 'string' || track.hash.trim() === '') {
+      errors.push('hash is required and must be non-empty');
+    }
+
+    if (!track.filename || typeof track.filename !== 'string' || track.filename.trim() === '') {
+      errors.push('filename is required and must be non-empty');
+    }
+
+    if (!track.extension || typeof track.extension !== 'string' || track.extension.trim() === '') {
+      errors.push('extension is required and must be non-empty');
+    }
+
+    // Check required numeric fields
+    if (track.sizeBytes === undefined || track.sizeBytes === null || typeof track.sizeBytes !== 'number' || track.sizeBytes < 0) {
+      errors.push('sizeBytes is required and must be a non-negative number');
+    }
+
+    // Check required date field
+    if (!track.fileModifiedAt || !(track.fileModifiedAt instanceof Date) || isNaN(track.fileModifiedAt.getTime())) {
+      errors.push('fileModifiedAt is required and must be a valid Date');
+    }
+
+    return errors;
+  }
+
   private setupTables() {
     this.ensureInitialized();
 
@@ -157,6 +190,21 @@ export class CleanCueDatabase {
     this.ensureInitialized();
     console.log(`[DATABASE] Database initialized check passed`);
 
+    // Validate required fields before insertion
+    const validationErrors = this.validateTrackData(track);
+    if (validationErrors.length > 0) {
+      const errorMsg = `[DATABASE] ❌ Track validation failed: ${validationErrors.join(', ')}`;
+      console.error(errorMsg);
+      console.error(`[DATABASE] ❌ Invalid track data:`, {
+        path: track.path,
+        filename: track.filename,
+        hash: track.hash?.substring(0, 8),
+        sizeBytes: track.sizeBytes,
+        fileModifiedAt: track.fileModifiedAt
+      });
+      throw new Error(`Track validation failed: ${validationErrors.join(', ')}`);
+    }
+
     const id = randomUUID();
     const now = Date.now();
     console.log(`[DATABASE] Generated ID: ${id}, timestamp: ${now}`);
@@ -222,8 +270,35 @@ export class CleanCueDatabase {
         updatedAt: new Date(now)
       };
     } catch (error) {
-      console.error(`[DATABASE] Error inserting track ${track.path}:`, error);
-      throw error;
+      console.error(`[DATABASE] ❌ CRITICAL: Failed to insert track into database`);
+      console.error(`[DATABASE] ❌ Track Path: ${track.path}`);
+      console.error(`[DATABASE] ❌ Track Data:`, {
+        filename: track.filename,
+        extension: track.extension,
+        hash: track.hash?.substring(0, 12),
+        sizeBytes: track.sizeBytes,
+        hasFileModifiedAt: !!track.fileModifiedAt
+      });
+      console.error(`[DATABASE] ❌ SQL Error Details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        errorType: error?.constructor?.name || typeof error
+      });
+
+      // Check for common SQL constraint violations
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('UNIQUE constraint failed')) {
+        console.error(`[DATABASE] ❌ DUPLICATE PATH: Track with this path already exists`);
+        throw new Error(`Duplicate track path: ${track.path}`);
+      } else if (errorMsg.includes('NOT NULL constraint failed')) {
+        console.error(`[DATABASE] ❌ MISSING REQUIRED FIELD: Check that all required fields are present`);
+        throw new Error(`Missing required field for track: ${track.path}`);
+      } else if (errorMsg.includes('no such table')) {
+        console.error(`[DATABASE] ❌ DATABASE NOT INITIALIZED: Tables missing`);
+        throw new Error(`Database not properly initialized`);
+      }
+
+      throw new Error(`Database insertion failed for ${track.path}: ${errorMsg}`);
     }
   }
 

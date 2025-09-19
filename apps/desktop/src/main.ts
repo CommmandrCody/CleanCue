@@ -45,6 +45,18 @@ class CleanCueApp {
         // Initialize the database
         await this.engine.initialize()
 
+        // Add a small delay to ensure database is fully ready
+        await new Promise(resolve => setTimeout(resolve, 200))
+
+        // Verify database is working by testing a simple operation
+        try {
+          this.engine.getAllTracks()
+          console.log('Database readiness check passed')
+        } catch (error) {
+          console.warn('Database readiness check failed, adding extra delay:', error)
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+
         // Update workers path to point to the correct Python workers location
         const workersPath = path.resolve(__dirname, '../../packages/workers')
         this.engine.updateConfig({
@@ -450,13 +462,43 @@ class CleanCueApp {
     })
 
     // Handle engine operations (scan, analyze, export)
+    let scanInProgress = false
     ipcMain.handle('engine-scan', async (_, folderPath: string, options?: any) => {
+      const callId = Math.random().toString(36).substring(7)
       try {
+        // Prevent concurrent scans
+        if (scanInProgress) {
+          console.log(`[MAIN] ⚠️ [${callId}] Scan already in progress, rejecting duplicate call`)
+          return { success: false, error: 'Scan already in progress' }
+        }
+
+        scanInProgress = true
+        console.log(`[MAIN] 🎯 [${callId}] IPC engine-scan handler called with folder: ${folderPath}`)
+        console.log(`[MAIN] 🎯 [${callId}] IPC engine-scan options:`, options)
+
         await this.initializeEngine()
         if (!this.engine) {
           return { success: false, error: 'Engine not initialized' }
         }
+
+        console.log(`[MAIN] 🔍 [${callId}] Starting scan of folder: ${folderPath}`)
+        console.log(`[MAIN] 📋 [${callId}] Scan options:`, options)
+
         const result = await this.engine.scanLibrary([folderPath], options)
+
+        console.log(`[MAIN] ✅ [${callId}] Engine scan completed with result:`, {
+          tracksScanned: result.tracksScanned,
+          tracksAdded: result.tracksAdded,
+          tracksUpdated: result.tracksUpdated,
+          errorsCount: result.errors.length
+        })
+
+        // Get current track count to verify database state
+        const allTracks = this.engine.getAllTracks()
+        console.log(`[MAIN] 📊 Current database track count: ${allTracks.length}`)
+
+        // Ensure database operations are fully committed before returning
+        await new Promise(resolve => setTimeout(resolve, 500))
 
         // If auto-analyze is enabled, queue tracks for analysis
         if (options?.autoAnalyzeBpmKey && result.tracksAdded > 0) {
@@ -468,16 +510,30 @@ class CleanCueApp {
           }, 1000)
         }
 
-        return {
+        const finalResult = {
           success: true,
           tracksFound: result.tracksScanned,
           tracksAdded: result.tracksAdded,
           tracksUpdated: result.tracksUpdated,
           errors: result.errors
         }
+
+        console.log(`[MAIN] 📤 [${callId}] Returning scan result to UI:`, {
+          ...finalResult,
+          engineResult: {
+            tracksScanned: result.tracksScanned,
+            tracksAdded: result.tracksAdded,
+            tracksUpdated: result.tracksUpdated,
+            errorsCount: result.errors.length
+          }
+        })
+        return finalResult
       } catch (error) {
-        console.error('Scan failed:', error)
+        console.error(`[MAIN] ❌ [${callId}] Scan failed:`, error)
         return { success: false, error: (error as Error).message }
+      } finally {
+        scanInProgress = false
+        console.log(`[MAIN] 🔓 [${callId}] Scan lock released`)
       }
     })
 
@@ -770,7 +826,20 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        const issues = this.engine.getLibraryHealth()
+        const rawIssues = this.engine.getLibraryHealth()
+
+        // Transform engine format to UI format
+        const issues = rawIssues.map((issue: any) => ({
+          id: issue.id,
+          type: this.mapIssueType(issue.type, issue.category),
+          severity: this.mapIssueSeverity(issue.type),
+          title: issue.message,
+          description: issue.details || issue.message,
+          trackPath: issue.trackId ? this.getTrackPath(issue.trackId) : undefined,
+          suggestion: issue.canAutoFix ? 'This issue can be automatically fixed' : 'Manual intervention required',
+          count: 1
+        }))
+
         return { success: true, issues }
       } catch (error) {
         console.error('Failed to get library health:', error)
@@ -786,6 +855,24 @@ class CleanCueApp {
         }
 
         const result = await this.engine.scanLibraryHealth()
+
+        if (result.success) {
+          // Get the updated issues after scan
+          const rawIssues = this.engine.getLibraryHealth()
+          const issues = rawIssues.map((issue: any) => ({
+            id: issue.id,
+            type: this.mapIssueType(issue.type, issue.category),
+            severity: this.mapIssueSeverity(issue.type),
+            title: issue.message,
+            description: issue.details || issue.message,
+            trackPath: issue.trackId ? this.getTrackPath(issue.trackId) : undefined,
+            suggestion: issue.canAutoFix ? 'This issue can be automatically fixed' : 'Manual intervention required',
+            count: 1
+          }))
+
+          return { success: true, issues, issuesFound: result.issuesFound }
+        }
+
         return result
       } catch (error) {
         console.error('Failed to scan library health:', error)
@@ -1061,6 +1148,45 @@ class CleanCueApp {
       message: 'CleanCue',
       detail: `Version: ${app.getVersion()}\\n\\nOpen-source DJ library management toolkit.\\nBuilt with Electron and React.`
     })
+  }
+
+  private mapIssueType(engineType: string, category: string): string {
+    switch (category.toLowerCase()) {
+      case 'missing files':
+        return 'missing'
+      case 'missing metadata':
+        return 'metadata'
+      case 'corrupted files':
+        return 'corrupted'
+      case 'duplicates':
+        return 'duplicate'
+      default:
+        return 'warning'
+    }
+  }
+
+  private mapIssueSeverity(engineType: string): string {
+    switch (engineType) {
+      case 'error':
+        return 'high'
+      case 'warning':
+        return 'medium'
+      case 'info':
+        return 'low'
+      default:
+        return 'medium'
+    }
+  }
+
+  private getTrackPath(trackId: string): string | undefined {
+    try {
+      if (!this.engine) return undefined
+      const track = this.engine.db.getTrackById(trackId)
+      return track?.path
+    } catch (error) {
+      console.error('Failed to get track path:', error)
+      return undefined
+    }
   }
 }
 

@@ -96,7 +96,7 @@ export interface ElectronAPI {
   }) => Promise<string>
   openExternal: (url: string) => Promise<void>
   showItemInFolder: (fullPath: string) => Promise<void>
-  engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number }>
+  engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number; tracksAdded?: number; tracksUpdated?: number; errors?: string[]; error?: string }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
   getAllTracks: () => Promise<any[]>
   engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>

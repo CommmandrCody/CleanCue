@@ -24,7 +24,7 @@ describe('ScanDialog Component', () => {
       render(<ScanDialog onClose={mockOnClose} />)
 
       expect(screen.getByText('Scan Music Library')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
+      expect(screen.getByLabelText('Close dialog')).toBeInTheDocument()
     })
 
     it('renders folder selection interface', () => {

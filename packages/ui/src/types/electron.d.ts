@@ -9,7 +9,7 @@ export interface ElectronAPI {
   showItemInFolder: (fullPath: string) => Promise<void>
 
   // Engine operations
-  engineScan: (folderPath: string, options?: any) => Promise<{ success: boolean; tracksFound: number; error?: string }>
+  engineScan: (folderPath: string, options?: any) => Promise<{ success: boolean; tracksFound: number; tracksAdded?: number; tracksUpdated?: number; errors?: string[]; error?: string }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[]; error?: string }>
   engineClearLibrary: () => Promise<{ success: boolean; removedCount: number; error?: string }>
   getAllTracks: () => Promise<any[]>

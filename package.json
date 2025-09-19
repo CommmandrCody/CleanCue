@@ -21,6 +21,8 @@
     "test:build": "./scripts/test-build.sh",
     "test:health": "./scripts/health-check.sh",
     "test:all": "pnpm run test:health && pnpm run test:unit && pnpm run test:ui && pnpm run test:build",
+    "test:ui-complete": "./scripts/test-ui-complete.sh",
+    "test:ui-interactive": "./scripts/test-ui-interactive.sh",
     "ci": "./scripts/local-ci.sh",
     "lint": "pnpm -r lint",
     "type-check": "pnpm -r type-check",

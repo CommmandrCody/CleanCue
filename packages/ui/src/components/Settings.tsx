@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2 } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2, FileText } from 'lucide-react'
+import { LogViewer } from './LogViewer'
 
 interface SettingsProps {
   isOpen: boolean
@@ -38,6 +39,12 @@ interface AppSettings {
     theme: 'dark' | 'light' | 'auto'
     showAlbumArt: boolean
     compactView: boolean
+    showLogViewer: boolean
+    logViewerHeight: number
+    gridCols: 'auto' | '2' | '3' | '4' | '5'
+    showTooltips: boolean
+    animateTransitions: boolean
+    autoColorTheme: boolean
   }
 }
 
@@ -72,13 +79,19 @@ const defaultSettings: AppSettings = {
   ui: {
     theme: 'dark',
     showAlbumArt: true,
-    compactView: false
+    compactView: true,
+    showLogViewer: true,
+    logViewerHeight: 200,
+    gridCols: 'auto',
+    showTooltips: true,
+    animateTransitions: true,
+    autoColorTheme: false
   }
 }
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
-  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'ui'>('workflow')
+  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'ui' | 'logs'>('workflow')
 
   if (!isOpen) return null
 
@@ -117,7 +130,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     { id: 'library', label: 'Library', icon: Music },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'analysis', label: 'Analysis', icon: SettingsIcon },
-    { id: 'ui', label: 'Interface', icon: Folder }
+    { id: 'ui', label: 'Interface', icon: Folder },
+    { id: 'logs', label: 'Logs', icon: FileText }
   ]
 
   return (
@@ -464,20 +478,52 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               <div className="space-y-6">
                 <h3 className="text-lg font-medium mb-4">Interface Settings</h3>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Theme</label>
-                  <select
-                    value={settings.ui.theme}
-                    onChange={(e) => updateSettings('ui', { theme: e.target.value })}
-                    className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                    <option value="auto">Auto (System)</option>
-                  </select>
+                {/* Theme Settings */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Theme</label>
+                    <select
+                      value={settings.ui.theme}
+                      onChange={(e) => updateSettings('ui', { theme: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                      <option value="auto">Auto (System)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Grid Columns</label>
+                    <select
+                      value={settings.ui.gridCols}
+                      onChange={(e) => updateSettings('ui', { gridCols: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="2">2 Columns</option>
+                      <option value="3">3 Columns</option>
+                      <option value="4">4 Columns</option>
+                      <option value="5">5 Columns</option>
+                    </select>
+                  </div>
                 </div>
 
+                {/* View Options */}
                 <div className="space-y-4">
+                  <h4 className="text-md font-medium text-gray-300">View Options</h4>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.ui.compactView}
+                      onChange={(e) => updateSettings('ui', { compactView: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Default to compact list view</span>
+                    <span className="text-xs text-gray-400">(Recommended for DJs)</span>
+                  </label>
+
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
@@ -491,13 +537,89 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
-                      checked={settings.ui.compactView}
-                      onChange={(e) => updateSettings('ui', { compactView: e.target.checked })}
+                      checked={settings.ui.showTooltips}
+                      onChange={(e) => updateSettings('ui', { showTooltips: e.target.checked })}
                       className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
                     />
-                    <span>Compact list view</span>
+                    <span>Show helpful tooltips</span>
+                  </label>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.ui.animateTransitions}
+                      onChange={(e) => updateSettings('ui', { animateTransitions: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Smooth animations</span>
+                  </label>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.ui.autoColorTheme}
+                      onChange={(e) => updateSettings('ui', { autoColorTheme: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Auto-color theme based on music</span>
+                    <span className="text-xs text-gray-400">(Experimental)</span>
                   </label>
                 </div>
+
+                {/* Log Viewer Settings */}
+                <div className="space-y-4">
+                  <h4 className="text-md font-medium text-gray-300">Transparency & Logging</h4>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.ui.showLogViewer}
+                      onChange={(e) => updateSettings('ui', { showLogViewer: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Show log viewer at bottom of screens</span>
+                    <span className="text-xs text-gray-400">(For transparency)</span>
+                  </label>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Log Viewer Height: {settings.ui.logViewerHeight}px
+                    </label>
+                    <input
+                      type="range"
+                      min="150"
+                      max="400"
+                      step="25"
+                      value={settings.ui.logViewerHeight}
+                      onChange={(e) => updateSettings('ui', { logViewerHeight: parseInt(e.target.value) })}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>Compact (150px)</span>
+                      <span>Large (400px)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DJ Workflow Enhancements */}
+                <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-blue-300 mb-3">🎧 DJ Workflow Enhancements</h4>
+                  <p className="text-sm text-gray-300 mb-3">
+                    These settings optimize CleanCue for professional DJ use with better track management and faster workflow.
+                  </p>
+                  <div className="text-xs text-gray-400">
+                    • Compact view shows more tracks per screen<br/>
+                    • BPM and key info prominently displayed<br/>
+                    • Quick selection and analysis tools<br/>
+                    • Real-time logging for transparency
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'logs' && (
+              <div className="h-[600px]">
+                <LogViewer />
               </div>
             )}
           </div>
@@ -533,3 +655,5 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     </div>
   )
 }
+
+export default Settings

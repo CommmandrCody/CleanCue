@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3 } from 'lucide-react'
+import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, Music2, List, Grid3X3 } from 'lucide-react'
 import clsx from 'clsx'
 import { ExportDialog } from './ExportDialog'
-import { AudioPlayer } from './AudioPlayer'
+import { StemSeparationDialog } from './StemSeparationDialog'
 
 interface Track {
   id: string
@@ -19,19 +19,19 @@ interface Track {
   path: string
 }
 
-interface LibraryViewProps {}
+interface LibraryViewProps {
+  onPlayTrack?: (tracks: Track[], startIndex: number) => void
+}
 
-
-export function LibraryView({}: LibraryViewProps) {
+export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTracks, setSelectedTracks] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
-  const [showPlayer, setShowPlayer] = useState(false)
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(0)
-  const [playerTracks, setPlayerTracks] = useState<Track[]>([])
+  const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false)
+  const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
 
   useEffect(() => {
     loadTracks()
@@ -214,18 +214,10 @@ export function LibraryView({}: LibraryViewProps) {
   }
 
   const handlePlayTrack = (track: Track) => {
-    const trackIndex = filteredTracks.findIndex(t => t.id === track.id)
-    setPlayerTracks(filteredTracks)
-    setCurrentTrackIndex(trackIndex)
-    setShowPlayer(true)
-  }
-
-  const handlePlayerTrackChange = (index: number) => {
-    setCurrentTrackIndex(index)
-  }
-
-  const handleClosePlayer = () => {
-    setShowPlayer(false)
+    if (onPlayTrack) {
+      const trackIndex = filteredTracks.findIndex(t => t.id === track.id)
+      onPlayTrack(filteredTracks, trackIndex)
+    }
   }
 
   const handleAnalyzeClick = async () => {
@@ -272,6 +264,34 @@ export function LibraryView({}: LibraryViewProps) {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* View Mode Toggle */}
+          <div className="flex bg-gray-700 rounded-md p-1">
+            <button
+              onClick={() => setViewMode('compact')}
+              className={clsx(
+                'px-3 py-1 rounded text-sm font-medium transition-colors',
+                viewMode === 'compact'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              )}
+              title="Compact List View"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={clsx(
+                'px-3 py-1 rounded text-sm font-medium transition-colors',
+                viewMode === 'grid'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              )}
+              title="Grid View"
+            >
+              <Grid3X3 className="h-4 w-4" />
+            </button>
+          </div>
+
           <button
             onClick={toggleSelectAll}
             disabled={filteredTracks.length === 0}
@@ -303,6 +323,21 @@ export function LibraryView({}: LibraryViewProps) {
           >
             <BarChart3 className="h-4 w-4 inline mr-2" />
             Analyze & Update ({selectedTracks.length})
+          </button>
+
+          <button
+            onClick={() => setShowStemSeparationDialog(true)}
+            disabled={selectedTracks.length === 0}
+            className={clsx(
+              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              selectedTracks.length > 0
+                ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            )}
+            title="Separate selected tracks into stems (vocals, drums, bass, other)"
+          >
+            <Music2 className="h-4 w-4 inline mr-2" />
+            STEM Separation ({selectedTracks.length})
           </button>
 
           <button
@@ -347,113 +382,209 @@ export function LibraryView({}: LibraryViewProps) {
         </div>
       </div>
 
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
-        <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-700 text-sm font-medium text-gray-300">
-          <div className="col-span-1">Select</div>
-          <div className="col-span-1">Play</div>
-          <div className="col-span-4">Track</div>
-          <div className="col-span-3">Artist</div>
-          <div className="col-span-1">BPM</div>
-          <div className="col-span-1">Key</div>
-          <div className="col-span-1">Energy</div>
-        </div>
+      {/* Track Display - Conditional View */}
+      {viewMode === 'compact' ? (
+        /* Compact List View */
+        <div className="bg-gray-800 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300">
+            <div className="col-span-1">✓</div>
+            <div className="col-span-1">▶</div>
+            <div className="col-span-5">Track</div>
+            <div className="col-span-2">Artist</div>
+            <div className="col-span-1">BPM</div>
+            <div className="col-span-1">Key</div>
+            <div className="col-span-1">⚡</div>
+          </div>
 
-        <div className="divide-y divide-gray-700">
-          {loading ? (
-            <div className="text-center py-12 text-gray-400">
-              <Music className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
-              <p>Loading tracks...</p>
-            </div>
-          ) : filteredTracks.map((track) => (
-            <div
-              key={track.id}
-              className={clsx(
-                'grid grid-cols-12 gap-4 px-6 py-4 hover:bg-gray-700 transition-colors',
-                selectedTracks.includes(track.id) && 'bg-primary-900/20'
-              )}
-            >
-              <div className="col-span-1">
-                <input
-                  type="checkbox"
-                  checked={selectedTracks.includes(track.id)}
-                  onChange={() => toggleTrackSelection(track.id)}
-                  className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
-                />
+          <div className="divide-y divide-gray-700">
+            {loading ? (
+              <div className="text-center py-8 text-gray-400">
+                <Music className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
+                <p className="text-sm">Loading tracks...</p>
               </div>
+            ) : filteredTracks.map((track) => (
+              <div
+                key={track.id}
+                className={clsx(
+                  'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm',
+                  selectedTracks.includes(track.id) && 'bg-primary-900/20'
+                )}
+              >
+                <div className="col-span-1 flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedTracks.includes(track.id)}
+                    onChange={() => toggleTrackSelection(track.id)}
+                    className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500 w-3 h-3"
+                  />
+                </div>
 
-              <div className="col-span-1">
-                <button
-                  onClick={() => handlePlayTrack(track)}
-                  className="p-2 text-gray-400 hover:text-primary-400 transition-colors"
-                  title="Play track"
-                >
-                  <Play className="h-4 w-4" />
-                </button>
-              </div>
+                <div className="col-span-1 flex items-center">
+                  <button
+                    onClick={() => handlePlayTrack(track)}
+                    className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
+                    title="Play track"
+                  >
+                    <Play className="h-3 w-3" />
+                  </button>
+                </div>
 
-              <div className="col-span-4">
-                <div className="flex items-center space-x-3">
-                  <Music className="h-4 w-4 text-gray-400" />
+                <div className="col-span-5 flex items-center min-w-0">
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{track.title}</div>
-                    {track.album && (
-                      <div className="text-sm text-gray-400 truncate">{track.album}</div>
-                    )}
-                    {track.genre && (
-                      <div className="text-xs text-gray-500 truncate">{track.genre}</div>
-                    )}
+                    <div className="font-medium truncate text-sm">{track.title}</div>
+                    <div className="text-xs text-gray-400 truncate">
+                      {track.album && `${track.album} • `}{track.genre || 'Unknown Genre'}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="col-span-3 text-gray-300 truncate">{track.artist}</div>
+                <div className="col-span-2 flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
 
-              <div className="col-span-1">
-                {track.bpm && (
-                  <div className="flex items-center space-x-1">
-                    <span className={clsx('font-medium', getBpmColor(track.bpm))}>{track.bpm}</span>
-                  </div>
-                )}
-              </div>
+                <div className="col-span-1 flex items-center">
+                  {track.bpm && (
+                    <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
+                  )}
+                </div>
 
-              <div className="col-span-1">
-                {track.key && (
-                  <div className="flex items-center space-x-1">
-                    <Key className="h-3 w-3 text-purple-400" />
-                    <span className="text-xs font-medium">{track.key}</span>
-                  </div>
-                )}
-                {track.camelotKey && (
-                  <div className="mt-1 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300 text-center">
-                    {track.camelotKey}
-                  </div>
-                )}
-              </div>
+                <div className="col-span-1 flex items-center">
+                  {track.camelotKey && (
+                    <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
+                      {track.camelotKey}
+                    </span>
+                  )}
+                </div>
 
-              <div className="col-span-1">
-                {track.energy ? (
-                  <div className="flex items-center space-x-1">
-                    <Zap className={clsx('h-3 w-3', getEnergyColor(track.energy))} />
+                <div className="col-span-1 flex items-center">
+                  {track.energy ? (
                     <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-500 text-xs">-</div>
-                )}
+                  ) : (
+                    <span className="text-gray-500 text-xs">-</span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {!loading && filteredTracks.length === 0 && (
-          <div className="text-center py-12 text-gray-400">
-            <Music className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No tracks found</p>
-            {searchQuery && (
-              <p className="text-sm mt-2">Try adjusting your search query</p>
-            )}
+            ))}
           </div>
-        )}
-      </div>
+
+          {!loading && filteredTracks.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <Music className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No tracks found</p>
+              {searchQuery && (
+                <p className="text-xs mt-1">Try adjusting your search query</p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Grid View */
+        <div className="bg-gray-800 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-700 text-sm font-medium text-gray-300">
+            <div className="col-span-1">Select</div>
+            <div className="col-span-1">Play</div>
+            <div className="col-span-4">Track</div>
+            <div className="col-span-3">Artist</div>
+            <div className="col-span-1">BPM</div>
+            <div className="col-span-1">Key</div>
+            <div className="col-span-1">Energy</div>
+          </div>
+
+          <div className="divide-y divide-gray-700">
+            {loading ? (
+              <div className="text-center py-12 text-gray-400">
+                <Music className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
+                <p>Loading tracks...</p>
+              </div>
+            ) : filteredTracks.map((track) => (
+              <div
+                key={track.id}
+                className={clsx(
+                  'grid grid-cols-12 gap-4 px-6 py-4 hover:bg-gray-700 transition-colors',
+                  selectedTracks.includes(track.id) && 'bg-primary-900/20'
+                )}
+              >
+                <div className="col-span-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedTracks.includes(track.id)}
+                    onChange={() => toggleTrackSelection(track.id)}
+                    className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                  />
+                </div>
+
+                <div className="col-span-1">
+                  <button
+                    onClick={() => handlePlayTrack(track)}
+                    className="p-2 text-gray-400 hover:text-primary-400 transition-colors"
+                    title="Play track"
+                  >
+                    <Play className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="col-span-4">
+                  <div className="flex items-center space-x-3">
+                    <Music className="h-4 w-4 text-gray-400" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{track.title}</div>
+                      {track.album && (
+                        <div className="text-sm text-gray-400 truncate">{track.album}</div>
+                      )}
+                      {track.genre && (
+                        <div className="text-xs text-gray-500 truncate">{track.genre}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-span-3 text-gray-300 truncate">{track.artist}</div>
+
+                <div className="col-span-1">
+                  {track.bpm && (
+                    <div className="flex items-center space-x-1">
+                      <span className={clsx('font-medium', getBpmColor(track.bpm))}>{track.bpm}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-span-1">
+                  {track.key && (
+                    <div className="flex items-center space-x-1">
+                      <Key className="h-3 w-3 text-purple-400" />
+                      <span className="text-xs font-medium">{track.key}</span>
+                    </div>
+                  )}
+                  {track.camelotKey && (
+                    <div className="mt-1 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300 text-center">
+                      {track.camelotKey}
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-span-1">
+                  {track.energy ? (
+                    <div className="flex items-center space-x-1">
+                      <Zap className={clsx('h-3 w-3', getEnergyColor(track.energy))} />
+                      <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 text-xs">-</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!loading && filteredTracks.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              <Music className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No tracks found</p>
+              {searchQuery && (
+                <p className="text-sm mt-2">Try adjusting your search query</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       {showDeleteDialog && (
@@ -529,15 +660,15 @@ export function LibraryView({}: LibraryViewProps) {
         />
       )}
 
-      {/* Audio Player */}
-      {showPlayer && playerTracks.length > 0 && (
-        <AudioPlayer
-          tracks={playerTracks}
-          currentTrackIndex={currentTrackIndex}
-          onTrackChange={handlePlayerTrackChange}
-          onClose={handleClosePlayer}
+      {/* STEM Separation Dialog */}
+      {showStemSeparationDialog && (
+        <StemSeparationDialog
+          isOpen={showStemSeparationDialog}
+          onClose={() => setShowStemSeparationDialog(false)}
+          selectedTracks={filteredTracks.filter(track => selectedTracks.includes(track.id))}
         />
       )}
+
     </div>
   )
 }

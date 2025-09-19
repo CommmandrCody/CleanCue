@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Eye, EyeOff } from 'lucide-react'
+// import { AudioVisualizer, VisualizerControls } from './AudioVisualizer'
 
 interface Track {
   id: string
@@ -24,6 +25,9 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
+  const [showVisualizer, setShowVisualizer] = useState(true)
+  // const [visualizerType, setVisualizerType] = useState<'bars' | 'wave' | 'circular' | 'waveform'>('bars')
+  // const [visualizerColor, setVisualizerColor] = useState('#3b82f6')
 
   const currentTrack = tracks[currentTrackIndex]
 
@@ -45,8 +49,8 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('ended', handleEnded)
 
-    // Load new track
-    audio.src = `file://${currentTrack.path}`
+    // Load new track - use proper file path for Electron
+    audio.src = currentTrack.path
     audio.load()
 
     return () => {
@@ -123,104 +127,141 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
   if (!currentTrack) return null
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 p-4 z-50">
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 z-50">
       <audio ref={audioRef} />
 
-      <div className="max-w-screen-xl mx-auto">
-        <div className="flex items-center justify-between">
-          {/* Track Info */}
-          <div className="flex items-center space-x-4 min-w-0 flex-1">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium text-white truncate">{currentTrack.title}</div>
-              <div className="text-sm text-gray-400 truncate">{currentTrack.artist}</div>
-              {currentTrack.album && (
-                <div className="text-xs text-gray-500 truncate">{currentTrack.album}</div>
-              )}
+      {/* Visualizer Section - Temporarily disabled for build */}
+      {showVisualizer && (
+        <div className="border-b border-gray-700 p-4">
+          <div className="max-w-screen-xl mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-300">Audio Visualizer</h3>
+              <button
+                onClick={() => setShowVisualizer(false)}
+                className="p-1 text-gray-400 hover:text-white transition-colors"
+                title="Hide visualizer"
+              >
+                <EyeOff className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center h-32 bg-gray-800 rounded-lg">
+              <span className="text-gray-500">Visualizer temporarily disabled</span>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Controls */}
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={handlePrevious}
-              disabled={currentTrackIndex === 0}
-              className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <SkipBack className="h-5 w-5" />
-            </button>
+      {/* Player Controls */}
+      <div className="p-4">
+        <div className="max-w-screen-xl mx-auto">
+          <div className="flex items-center justify-between">
+            {/* Track Info */}
+            <div className="flex items-center space-x-4 min-w-0 flex-1">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-white truncate">{currentTrack.title}</div>
+                <div className="text-sm text-gray-400 truncate">{currentTrack.artist}</div>
+                {currentTrack.album && (
+                  <div className="text-xs text-gray-500 truncate">{currentTrack.album}</div>
+                )}
+              </div>
+            </div>
 
-            <button
-              onClick={togglePlayPause}
-              className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors"
-            >
-              {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-            </button>
+            {/* Controls */}
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handlePrevious}
+                disabled={currentTrackIndex === 0}
+                className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <SkipBack className="h-5 w-5" />
+              </button>
 
-            <button
-              onClick={handleNext}
-              disabled={currentTrackIndex === tracks.length - 1}
-              className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <SkipForward className="h-5 w-5" />
-            </button>
-          </div>
+              <button
+                onClick={togglePlayPause}
+                className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors"
+              >
+                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+              </button>
 
-          {/* Progress */}
-          <div className="flex items-center space-x-3 min-w-0 flex-1">
-            <span className="text-sm text-gray-400 tabular-nums">
-              {formatTime(currentTime)}
-            </span>
+              <button
+                onClick={handleNext}
+                disabled={currentTrackIndex === tracks.length - 1}
+                className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <SkipForward className="h-5 w-5" />
+              </button>
+            </div>
 
-            <div className="flex-1">
+            {/* Progress */}
+            <div className="flex items-center space-x-3 min-w-0 flex-1">
+              <span className="text-sm text-gray-400 tabular-nums">
+                {formatTime(currentTime)}
+              </span>
+
+              <div className="flex-1">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={progress}
+                  onChange={handleSeek}
+                  className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #374151 ${progress}%, #374151 100%)`
+                  }}
+                />
+              </div>
+
+              <span className="text-sm text-gray-400 tabular-nums">
+                {formatTime(duration)}
+              </span>
+            </div>
+
+            {/* Volume and Controls */}
+            <div className="flex items-center space-x-2">
+              {/* Visualizer Toggle */}
+              <button
+                onClick={() => setShowVisualizer(!showVisualizer)}
+                className="p-2 text-gray-400 hover:text-white transition-colors"
+                title={showVisualizer ? "Hide visualizer" : "Show visualizer"}
+              >
+                {showVisualizer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+
+              {/* Volume */}
+              <button
+                onClick={toggleMute}
+                className="p-2 text-gray-400 hover:text-white transition-colors"
+              >
+                {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+
               <input
                 type="range"
                 min="0"
                 max="100"
-                value={progress}
-                onChange={handleSeek}
-                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                value={isMuted ? 0 : volume * 100}
+                onChange={handleVolumeChange}
+                className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progress}%, #374151 ${progress}%, #374151 100%)`
+                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${isMuted ? 0 : volume * 100}%, #374151 ${isMuted ? 0 : volume * 100}%, #374151 100%)`
                 }}
               />
+
+              {/* Close Button */}
+              <button
+                onClick={onClose}
+                className="p-2 text-gray-400 hover:text-white transition-colors ml-4"
+              >
+                ×
+              </button>
             </div>
-
-            <span className="text-sm text-gray-400 tabular-nums">
-              {formatTime(duration)}
-            </span>
           </div>
-
-          {/* Volume */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={toggleMute}
-              className="p-2 text-gray-400 hover:text-white transition-colors"
-            >
-              {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-            </button>
-
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={isMuted ? 0 : volume * 100}
-              onChange={handleVolumeChange}
-              className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${isMuted ? 0 : volume * 100}%, #374151 ${isMuted ? 0 : volume * 100}%, #374151 100%)`
-              }}
-            />
-          </div>
-
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white transition-colors ml-4"
-          >
-            ×
-          </button>
         </div>
       </div>
     </div>
   )
 }
+
+export default AudioPlayer
