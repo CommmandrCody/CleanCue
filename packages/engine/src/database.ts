@@ -1,19 +1,63 @@
 import { randomUUID } from 'crypto';
-import Database from 'better-sqlite3';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import initSqlJs, { Database } from 'sql.js';
 import type { Track, Analysis, CuePoint, Playlist, PlaylistTrack, HealthIssue } from '@cleancue/shared';
 
 export class CleanCueDatabase {
-  private db: Database.Database;
+  private db: Database | null = null;
+  private dbPath: string;
+  private sqlInstance: any = null;
 
   constructor(dbPath: string) {
-    this.db = new Database(dbPath);
-    this.setupTables();
-    console.log(`SQLite database initialized at: ${dbPath}`);
+    this.dbPath = dbPath;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.db) return; // Already initialized
+
+    try {
+      // Initialize sql.js
+      const SQL = await initSqlJs();
+      this.sqlInstance = SQL;
+
+      // Load existing database or create new one
+      if (existsSync(this.dbPath)) {
+        const fileBuffer = readFileSync(this.dbPath);
+        this.db = new SQL.Database(fileBuffer);
+      } else {
+        this.db = new SQL.Database();
+      }
+
+      this.setupTables();
+      this.saveDatabase();
+      console.log(`SQLite database initialized at: ${this.dbPath}`);
+    } catch (error) {
+      console.error('Failed to initialize database:', error);
+      throw error;
+    }
+  }
+
+  private saveDatabase(): void {
+    if (!this.db) throw new Error('Database not initialized');
+    const data = this.db.export();
+    writeFileSync(this.dbPath, data);
+  }
+
+  private ensureInitialized(): void {
+    if (!this.db) {
+      throw new Error('Database not initialized. Call initialize() first.');
+    }
+  }
+
+  isInitialized(): boolean {
+    return this.db !== null;
   }
 
   private setupTables() {
-    // Create tracks table
-    this.db.exec(`
+    this.ensureInitialized();
+
+    // Create tracks table with ALL Track interface fields
+    this.db!.run(`
       CREATE TABLE IF NOT EXISTS tracks (
         id TEXT PRIMARY KEY,
         path TEXT NOT NULL UNIQUE,
@@ -25,19 +69,29 @@ export class CleanCueDatabase {
         title TEXT,
         artist TEXT,
         album TEXT,
+        album_artist TEXT,
         genre TEXT,
         year INTEGER,
+        track_number INTEGER,
+        disc_number INTEGER,
+        composer TEXT,
+        comment TEXT,
         duration_ms INTEGER,
         bitrate INTEGER,
         sample_rate INTEGER,
         channels INTEGER,
+        bpm INTEGER,
+        key TEXT,
+        energy REAL,
+        danceability REAL,
+        valence REAL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
     `);
 
     // Create analyses table
-    this.db.exec(`
+    this.db!.run(`
       CREATE TABLE IF NOT EXISTS analyses (
         id TEXT PRIMARY KEY,
         track_id TEXT NOT NULL,
@@ -52,7 +106,7 @@ export class CleanCueDatabase {
     `);
 
     // Create cue_points table
-    this.db.exec(`
+    this.db!.run(`
       CREATE TABLE IF NOT EXISTS cue_points (
         id TEXT PRIMARY KEY,
         track_id TEXT NOT NULL,
@@ -66,7 +120,7 @@ export class CleanCueDatabase {
     `);
 
     // Create stem_separations table
-    this.db.exec(`
+    this.db!.run(`
       CREATE TABLE IF NOT EXISTS stem_separations (
         id TEXT PRIMARY KEY,
         track_id TEXT NOT NULL,
@@ -88,44 +142,94 @@ export class CleanCueDatabase {
     `);
 
     // Create indexes
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);
-      CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash);
-      CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id);
-      CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id);
-      CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id);
-      CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status);
-    `);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status)`);
+
+    this.saveDatabase();
   }
 
   async insertTrack(track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>): Promise<Track> {
+    console.log(`[DATABASE] Starting insertTrack for: ${track.path}`);
+    this.ensureInitialized();
+    console.log(`[DATABASE] Database initialized check passed`);
+
     const id = randomUUID();
     const now = Date.now();
+    console.log(`[DATABASE] Generated ID: ${id}, timestamp: ${now}`);
 
-    const stmt = this.db.prepare(`
-      INSERT INTO tracks (
-        id, path, hash, filename, extension, size_bytes, file_modified_at,
-        title, artist, album, genre, year, duration_ms, bitrate, sample_rate, channels,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    try {
+      console.log(`[DATABASE] Preparing SQL insert statement...`);
+      console.log(`[DATABASE] Track data - filename: ${track.filename}, size: ${track.sizeBytes}, hash: ${track.hash.substring(0, 8)}...`);
 
-    stmt.run(
-      id, track.path, track.hash, track.filename, track.extension, track.sizeBytes,
-      track.fileModifiedAt.getTime(), track.title, track.artist, track.album,
-      track.genre, track.year, track.durationMs, track.bitrate, track.sampleRate,
-      track.channels, now, now
-    );
+      // Ensure all values are defined or use null for SQL NULL
+      const safeValues = [
+        id,
+        track.path,
+        track.hash,
+        track.filename,
+        track.extension,
+        track.sizeBytes,
+        track.fileModifiedAt ? track.fileModifiedAt.getTime() : Date.now(),
+        track.title || null,
+        track.artist || null,
+        track.album || null,
+        track.albumArtist || null,
+        track.genre || null,
+        track.year || null,
+        track.trackNumber || null,
+        track.discNumber || null,
+        track.composer || null,
+        track.comment || null,
+        track.durationMs || null,
+        track.bitrate || null,
+        track.sampleRate || null,
+        track.channels || null,
+        track.bpm || null,
+        track.key || null,
+        track.energy || null,
+        track.danceability || null,
+        track.valence || null,
+        now,
+        now
+      ];
 
-    return {
-      ...track,
-      id,
-      createdAt: new Date(now),
-      updatedAt: new Date(now)
-    };
+      console.log(`[DATABASE] Safe values array length: ${safeValues.length}`);
+      console.log(`[DATABASE] Values:`, safeValues.map((v, i) => `${i}: ${v === null ? 'NULL' : typeof v}`));
+
+      this.db!.run(`
+        INSERT INTO tracks (
+          id, path, hash, filename, extension, size_bytes, file_modified_at,
+          title, artist, album, album_artist, genre, year, track_number, disc_number,
+          composer, comment, duration_ms, bitrate, sample_rate, channels,
+          bpm, key, energy, danceability, valence, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, safeValues);
+      console.log(`[DATABASE] SQL insert completed successfully`);
+
+      console.log(`[DATABASE] Saving database to disk...`);
+      this.saveDatabase();
+      console.log(`[DATABASE] Database saved successfully`);
+
+      console.log(`[DATABASE] Track inserted successfully: ${track.path}`);
+      return {
+        ...track,
+        id,
+        createdAt: new Date(now),
+        updatedAt: new Date(now)
+      };
+    } catch (error) {
+      console.error(`[DATABASE] Error inserting track ${track.path}:`, error);
+      throw error;
+    }
   }
 
   updateTrack(id: string, updates: Partial<Track>): void {
+    this.ensureInitialized();
+
     const updateFields = [];
     const values = [];
 
@@ -147,39 +251,78 @@ export class CleanCueDatabase {
       values.push(Date.now());
       values.push(id);
 
-      const stmt = this.db.prepare(`UPDATE tracks SET ${updateFields.join(', ')} WHERE id = ?`);
-      stmt.run(...values);
+      this.db!.run(`UPDATE tracks SET ${updateFields.join(', ')} WHERE id = ?`, values);
+      this.saveDatabase();
     }
   }
 
   getTrack(id: string): Track | null {
-    const stmt = this.db.prepare('SELECT * FROM tracks WHERE id = ?');
-    const row = stmt.get(id) as any;
-    return row ? this.rowToTrack(row) : null;
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM tracks WHERE id = ?');
+    stmt.bind([id]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      return this.rowToTrack(row);
+    }
+
+    stmt.free();
+    return null;
   }
 
   getTrackByPath(path: string): Track | null {
-    const stmt = this.db.prepare('SELECT * FROM tracks WHERE path = ?');
-    const row = stmt.get(path) as any;
-    return row ? this.rowToTrack(row) : null;
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM tracks WHERE path = ?');
+    stmt.bind([path]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      return this.rowToTrack(row);
+    }
+
+    stmt.free();
+    return null;
   }
 
   getTrackByHash(hash: string): Track[] {
-    const stmt = this.db.prepare('SELECT * FROM tracks WHERE hash = ?');
-    const rows = stmt.all(hash) as any[];
-    return rows.map(row => this.rowToTrack(row));
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM tracks WHERE hash = ?');
+    stmt.bind([hash]);
+
+    const tracks: Track[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      tracks.push(this.rowToTrack(row));
+    }
+
+    stmt.free();
+    return tracks;
   }
 
   getAllTracks(): Track[] {
-    const stmt = this.db.prepare('SELECT * FROM tracks ORDER BY created_at DESC');
-    const rows = stmt.all() as any[];
-    return rows.map(row => this.rowToTrack(row));
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM tracks ORDER BY created_at DESC');
+
+    const tracks: Track[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      tracks.push(this.rowToTrack(row));
+    }
+
+    stmt.free();
+    return tracks;
   }
 
   deleteTrack(id: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM tracks WHERE id = ?');
-    const result = stmt.run(id);
-    return result.changes > 0;
+    this.ensureInitialized();
+
+    this.db!.run('DELETE FROM tracks WHERE id = ?', [id]);
+    this.saveDatabase();
+    return true; // sql.js doesn't provide changes count easily
   }
 
   private rowToTrack(row: any): Track {
@@ -194,27 +337,37 @@ export class CleanCueDatabase {
       title: row.title,
       artist: row.artist,
       album: row.album,
+      albumArtist: row.album_artist,
       genre: row.genre,
       year: row.year,
+      trackNumber: row.track_number,
+      discNumber: row.disc_number,
+      composer: row.composer,
+      comment: row.comment,
       durationMs: row.duration_ms,
       bitrate: row.bitrate,
       sampleRate: row.sample_rate,
       channels: row.channels,
+      bpm: row.bpm,
+      key: row.key,
+      energy: row.energy,
+      danceability: row.danceability,
+      valence: row.valence,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };
   }
 
   async insertAnalysis(analysis: Omit<Analysis, 'id' | 'createdAt'>): Promise<Analysis> {
+    this.ensureInitialized();
+
     const id = randomUUID();
     const now = Date.now();
 
-    const stmt = this.db.prepare(`
+    this.db!.run(`
       INSERT INTO analyses (id, track_id, analyzer_name, analyzer_version, parameters, results, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+    `, [
       id,
       analysis.trackId,
       analysis.analyzerName,
@@ -223,7 +376,9 @@ export class CleanCueDatabase {
       JSON.stringify(analysis.results),
       analysis.status,
       now
-    );
+    ]);
+
+    this.saveDatabase();
 
     return {
       ...analysis,
@@ -233,6 +388,8 @@ export class CleanCueDatabase {
   }
 
   updateAnalysis(id: string, updates: Partial<Analysis>): void {
+    this.ensureInitialized();
+
     const updateFields = [];
     const values = [];
 
@@ -251,27 +408,39 @@ export class CleanCueDatabase {
 
     if (updateFields.length > 0) {
       values.push(id);
-      const stmt = this.db.prepare(`UPDATE analyses SET ${updateFields.join(', ')} WHERE id = ?`);
-      stmt.run(...values);
+      this.db!.run(`UPDATE analyses SET ${updateFields.join(', ')} WHERE id = ?`, values);
+      this.saveDatabase();
     }
   }
 
   getAnalysesByTrack(trackId: string): Analysis[] {
-    const stmt = this.db.prepare('SELECT * FROM analyses WHERE track_id = ? ORDER BY created_at DESC');
-    const rows = stmt.all(trackId) as any[];
-    return rows.map(row => this.rowToAnalysis(row));
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM analyses WHERE track_id = ? ORDER BY created_at DESC');
+    stmt.bind([trackId]);
+
+    const analyses: Analysis[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      analyses.push(this.rowToAnalysis(row));
+    }
+
+    stmt.free();
+    return analyses;
   }
 
   async insertCue(cue: Omit<CuePoint, 'id' | 'createdAt'>): Promise<CuePoint> {
+    this.ensureInitialized();
+
     const id = randomUUID();
     const now = Date.now();
 
-    const stmt = this.db.prepare(`
+    this.db!.run(`
       INSERT INTO cue_points (id, track_id, type, position_ms, label, confidence, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    `, [id, cue.trackId, cue.type, cue.positionMs, cue.label, cue.confidence, now]);
 
-    stmt.run(id, cue.trackId, cue.type, cue.positionMs, cue.label, cue.confidence, now);
+    this.saveDatabase();
 
     return {
       ...cue,
@@ -281,9 +450,19 @@ export class CleanCueDatabase {
   }
 
   getCuesByTrack(trackId: string): CuePoint[] {
-    const stmt = this.db.prepare('SELECT * FROM cue_points WHERE track_id = ? ORDER BY position_ms');
-    const rows = stmt.all(trackId) as any[];
-    return rows.map(row => this.rowToCuePoint(row));
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare('SELECT * FROM cue_points WHERE track_id = ? ORDER BY position_ms');
+    stmt.bind([trackId]);
+
+    const cues: CuePoint[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      cues.push(this.rowToCuePoint(row));
+    }
+
+    stmt.free();
+    return cues;
   }
 
   private rowToAnalysis(row: any): Analysis {
@@ -340,16 +519,16 @@ export class CleanCueDatabase {
     settings: any
     status: 'pending' | 'processing' | 'completed' | 'error'
   }) {
+    this.ensureInitialized();
+
     const id = randomUUID();
     const now = Date.now();
 
-    const stmt = this.db.prepare(`
+    this.db!.run(`
       INSERT INTO stem_separations (
         id, track_id, model_name, model_version, settings, status, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+    `, [
       id,
       separation.trackId,
       separation.modelName,
@@ -357,8 +536,9 @@ export class CleanCueDatabase {
       JSON.stringify(separation.settings),
       separation.status,
       now
-    );
+    ]);
 
+    this.saveDatabase();
     return id;
   }
 
@@ -372,6 +552,8 @@ export class CleanCueDatabase {
     processingTimeMs?: number
     errorMessage?: string
   }) {
+    this.ensureInitialized();
+
     const updateFields = [];
     const values = [];
 
@@ -390,67 +572,88 @@ export class CleanCueDatabase {
 
     if (updateFields.length > 0) {
       values.push(id);
-      const stmt = this.db.prepare(`UPDATE stem_separations SET ${updateFields.join(', ')} WHERE id = ?`);
-      stmt.run(...values);
+      this.db!.run(`UPDATE stem_separations SET ${updateFields.join(', ')} WHERE id = ?`, values);
+      this.saveDatabase();
     }
   }
 
   getStemSeparationByTrackId(trackId: string) {
-    const stmt = this.db.prepare('SELECT * FROM stem_separations WHERE track_id = ? ORDER BY created_at DESC LIMIT 1');
-    const row = stmt.get(trackId) as any;
+    this.ensureInitialized();
 
-    if (!row) return null;
+    const stmt = this.db!.prepare('SELECT * FROM stem_separations WHERE track_id = ? ORDER BY created_at DESC LIMIT 1');
+    stmt.bind([trackId]);
 
-    return {
-      id: row.id,
-      trackId: row.track_id,
-      modelName: row.model_name,
-      modelVersion: row.model_version,
-      settings: JSON.parse(row.settings || '{}'),
-      status: row.status,
-      progress: row.progress,
-      vocalsPath: row.vocals_path,
-      drumsPath: row.drums_path,
-      bassPath: row.bass_path,
-      otherPath: row.other_path,
-      processingTimeMs: row.processing_time_ms,
-      errorMessage: row.error_message,
-      createdAt: new Date(row.created_at),
-      completedAt: row.completed_at ? new Date(row.completed_at) : null
-    };
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return {
+        id: row.id,
+        trackId: row.track_id,
+        modelName: row.model_name,
+        modelVersion: row.model_version,
+        settings: JSON.parse(row.settings || '{}'),
+        status: row.status,
+        progress: row.progress,
+        vocalsPath: row.vocals_path,
+        drumsPath: row.drums_path,
+        bassPath: row.bass_path,
+        otherPath: row.other_path,
+        processingTimeMs: row.processing_time_ms,
+        errorMessage: row.error_message,
+        createdAt: new Date(row.created_at),
+        completedAt: row.completed_at ? new Date(row.completed_at) : null
+      };
+    }
+
+    stmt.free();
+    return null;
   }
 
   getAllStemSeparations() {
-    const stmt = this.db.prepare('SELECT * FROM stem_separations ORDER BY created_at DESC');
-    const rows = stmt.all() as any[];
+    this.ensureInitialized();
 
-    return rows.map(row => ({
-      id: row.id,
-      trackId: row.track_id,
-      modelName: row.model_name,
-      modelVersion: row.model_version,
-      settings: JSON.parse(row.settings || '{}'),
-      status: row.status,
-      progress: row.progress,
-      vocalsPath: row.vocals_path,
-      drumsPath: row.drums_path,
-      bassPath: row.bass_path,
-      otherPath: row.other_path,
-      processingTimeMs: row.processing_time_ms,
-      errorMessage: row.error_message,
-      createdAt: new Date(row.created_at),
-      completedAt: row.completed_at ? new Date(row.completed_at) : null
-    }));
+    const stmt = this.db!.prepare('SELECT * FROM stem_separations ORDER BY created_at DESC');
+
+    const separations: any[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      separations.push({
+        id: row.id,
+        trackId: row.track_id,
+        modelName: row.model_name,
+        modelVersion: row.model_version,
+        settings: JSON.parse(row.settings || '{}'),
+        status: row.status,
+        progress: row.progress,
+        vocalsPath: row.vocals_path,
+        drumsPath: row.drums_path,
+        bassPath: row.bass_path,
+        otherPath: row.other_path,
+        processingTimeMs: row.processing_time_ms,
+        errorMessage: row.error_message,
+        createdAt: new Date(row.created_at),
+        completedAt: row.completed_at ? new Date(row.completed_at) : null
+      });
+    }
+
+    stmt.free();
+    return separations;
   }
 
   deleteStemSeparation(id: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM stem_separations WHERE id = ?');
-    const result = stmt.run(id);
-    return result.changes > 0;
+    this.ensureInitialized();
+
+    this.db!.run('DELETE FROM stem_separations WHERE id = ?', [id]);
+    this.saveDatabase();
+    return true; // sql.js doesn't provide changes count easily
   }
 
   close(): void {
-    this.db.close();
-    console.log('SQLite database closed');
+    if (this.db) {
+      this.saveDatabase();
+      this.db.close();
+      this.db = null;
+      console.log('SQLite database closed');
+    }
   }
 }

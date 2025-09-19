@@ -199,7 +199,15 @@ export class FileScanner {
     }
 
     try {
-      const metadata = await parseFileFn(filePath);
+      // Add timeout to prevent hanging on problematic files
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Metadata extraction timeout')), 10000); // 10 second timeout
+      });
+
+      const metadata = await Promise.race([
+        parseFileFn(filePath),
+        timeoutPromise
+      ]);
 
       // Extract title and artist from filename if not available in metadata
       const filenameMetadata = this.extractMetadataFromFilename(filePath);
