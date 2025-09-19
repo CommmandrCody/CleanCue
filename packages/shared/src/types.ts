@@ -219,6 +219,17 @@ export interface CleanCueEventMap {
   'stem:separation:completed': { separationId: string };
   'stem:separation:cancelled': { separationId: string };
   'stem:separation:deleted': { separationId: string };
+  'duplicates:scan:started': {};
+  'duplicates:scan:completed': { duplicateGroups: any[] };
+  'duplicates:scan:failed': { error: string };
+  'health:scan:started': {};
+  'health:scan:completed': { issues: HealthIssue[] };
+  'health:scan:failed': { error: string };
+  'youtube:download:completed': any;
+  'youtube:download:failed': any;
+  'youtube:batch:started': any;
+  'youtube:batch:progress': any;
+  'youtube:batch:completed': any;
 }
 
 export type CleanCueEvent = {

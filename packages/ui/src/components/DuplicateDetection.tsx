@@ -235,7 +235,9 @@ export function DuplicateDetection() {
                     className="rounded border-gray-600 bg-gray-700 text-primary-600"
                   />
                   <div>
-                    <h3 className="font-medium">Duplicate Group #{group.id}</h3>
+                    <h3 className="font-medium">
+                      {group.tracks[0]?.title || 'Unknown'} - {group.tracks[0]?.artist || 'Unknown'} ({group.tracks.length} files)
+                    </h3>
                     <p className="text-sm text-gray-400">{group.reason}</p>
                   </div>
                 </div>

@@ -7,6 +7,8 @@ import { DuplicateDetection } from './components/DuplicateDetection'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { Settings } from './components/Settings'
+import { LibraryImport } from './components/LibraryImport'
+import { YouTubeDownloader } from './components/YouTubeDownloader'
 
 type ViewType = 'library' | 'health' | 'duplicates' | 'analysis'
 
@@ -14,6 +16,9 @@ function App() {
   const [currentView, setCurrentView] = useState<ViewType>('library')
   const [showScanDialog, setShowScanDialog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [showYouTubeDownloader, setShowYouTubeDownloader] = useState(false)
+
 
   const renderView = () => {
     switch (currentView) {
@@ -35,6 +40,8 @@ function App() {
       <Header
         onScan={() => setShowScanDialog(true)}
         onSettings={() => setShowSettings(true)}
+        onImport={() => setShowImport(true)}
+        onYouTubeDownloader={() => setShowYouTubeDownloader(true)}
       />
 
       <div className="flex">
@@ -56,6 +63,20 @@ function App() {
         <Settings
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showImport && (
+        <LibraryImport
+          isOpen={showImport}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+
+      {showYouTubeDownloader && (
+        <YouTubeDownloader
+          isOpen={showYouTubeDownloader}
+          onClose={() => setShowYouTubeDownloader(false)}
         />
       )}
 

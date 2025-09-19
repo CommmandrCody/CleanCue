@@ -9,15 +9,31 @@ if (require('electron-squirrel-startup')) {
 
 class CleanCueApp {
   private mainWindow: BrowserWindow | null = null
+  private splashWindow: BrowserWindow | null = null
   private isDev = process.argv.includes('--dev')
   private engine: any = null
+  private engineInitialized = false
+  private engineInitializing = false
 
   constructor() {
     this.setupApp()
   }
 
   private async initializeEngine() {
+    if (this.engineInitialized) {
+      return
+    }
+
+    if (this.engineInitializing) {
+      // Wait for the current initialization to complete
+      while (this.engineInitializing && !this.engineInitialized) {
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      return
+    }
+
     if (!this.engine) {
+      this.engineInitializing = true
       console.log('Initializing real CleanCue engine...')
       try {
         // Import CleanCue engine using CommonJS require
@@ -25,6 +41,9 @@ class CleanCueApp {
 
         // Initialize with configuration - it will create default config automatically
         this.engine = new CleanCueEngine()
+
+        // Initialize the database
+        await this.engine.initialize()
 
         // Update workers path to point to the correct Python workers location
         const workersPath = path.resolve(__dirname, '../../packages/workers')
@@ -35,21 +54,96 @@ class CleanCueApp {
           }
         })
 
+        // Set up event forwarding to renderer process
+        this.setupEventForwarding()
+
+        this.engineInitialized = true
         console.log('CleanCue engine initialized successfully')
       } catch (error) {
         console.error('Failed to initialize CleanCue engine:', error)
         throw error
+      } finally {
+        this.engineInitializing = false
       }
     }
+  }
+
+  private setupEventForwarding() {
+    if (!this.engine) return;
+
+    // Forward scan events to renderer
+    this.engine.on('scan:started', (data: any) => {
+      console.log('[MAIN] Forwarding scan:started event:', data);
+      this.mainWindow?.webContents.send('scan:started', data);
+    });
+
+    this.engine.on('scan:progress', (data: any) => {
+      console.log('[MAIN] Forwarding scan:progress event:', data);
+      this.mainWindow?.webContents.send('scan:progress', data);
+    });
+
+    this.engine.on('scan:completed', (data: any) => {
+      console.log('[MAIN] Forwarding scan:completed event:', data);
+      this.mainWindow?.webContents.send('scan:completed', data);
+    });
+
+    // Forward analysis events
+    this.engine.on('analysis:started', (data: any) => {
+      this.mainWindow?.webContents.send('analysis:started', data);
+    });
+
+    this.engine.on('analysis:progress', (data: any) => {
+      this.mainWindow?.webContents.send('analysis:progress', data);
+    });
+
+    this.engine.on('analysis:completed', (data: any) => {
+      this.mainWindow?.webContents.send('analysis:completed', data);
+    });
+
+    // Forward export events
+    this.engine.on('export:started', (data: any) => {
+      this.mainWindow?.webContents.send('export:started', data);
+    });
+
+    this.engine.on('export:completed', (data: any) => {
+      this.mainWindow?.webContents.send('export:completed', data);
+    });
+
+    // Forward STEM separation events
+    this.engine.on('stem:separation:started', (data: any) => {
+      this.mainWindow?.webContents.send('stem:separation:started', data);
+    });
+
+    this.engine.on('stem:separation:progress', (data: any) => {
+      this.mainWindow?.webContents.send('stem:separation:progress', data);
+    });
+
+    this.engine.on('stem:separation:completed', (data: any) => {
+      this.mainWindow?.webContents.send('stem:separation:completed', data);
+    });
+
+    this.engine.on('stem:separation:failed', (data: any) => {
+      this.mainWindow?.webContents.send('stem:separation:failed', data);
+    });
+
+    this.engine.on('stem:separation:cancelled', (data: any) => {
+      this.mainWindow?.webContents.send('stem:separation:cancelled', data);
+    });
+
+    console.log('[MAIN] Event forwarding setup complete');
   }
 
   private setupApp() {
     // This method will be called when Electron has finished initialization
     app.whenReady().then(() => {
-      this.createMainWindow()
+      this.createSplashWindow()
       this.setupMenu()
       this.setupIPC()
 
+      // Initialize main window after splash
+      setTimeout(() => {
+        this.createMainWindow()
+      }, 1500) // Show splash for 1.5 seconds
 
       app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the dock icon is clicked
@@ -75,7 +169,108 @@ class CleanCueApp {
     })
   }
 
+  private createSplashWindow() {
+    this.splashWindow = new BrowserWindow({
+      width: 400,
+      height: 300,
+      frame: false,
+      alwaysOnTop: true,
+      center: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      },
+      show: false
+    })
+
+    // Create splash screen HTML content
+    const splashHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+        }
+        .logo {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .tagline {
+            font-size: 18px;
+            font-weight: 300;
+            opacity: 0.9;
+            margin-bottom: 32px;
+        }
+        .loading {
+            width: 200px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .loading-bar {
+            width: 0%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            border-radius: 2px;
+            animation: loading 1.5s ease-in-out;
+        }
+        @keyframes loading {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">CleanCue</div>
+    <div class="tagline">Take control of your music</div>
+    <div class="loading">
+        <div class="loading-bar"></div>
+    </div>
+</body>
+</html>
+    `
+
+    // Write splash HTML to a temporary location
+    // Use app.getPath('temp') to write to a writable location instead of __dirname (which is read-only in asar)
+    const splashPath = path.join(app.getPath('temp'), 'cleancue-splash.html')
+    fs.writeFileSync(splashPath, splashHTML)
+
+    // Load the splash screen
+    this.splashWindow.loadFile(splashPath)
+
+    // Show splash when ready
+    this.splashWindow.once('ready-to-show', () => {
+      this.splashWindow?.show()
+    })
+
+    // Handle splash window closed
+    this.splashWindow.on('closed', () => {
+      this.splashWindow = null
+    })
+  }
+
   private createMainWindow() {
+    console.log('🪟 Creating main window...')
+    // Close splash window when main window is created
+    if (this.splashWindow) {
+      this.splashWindow.close()
+    }
+
     this.mainWindow = new BrowserWindow({
       width: 1400,
       height: 900,
@@ -101,7 +296,9 @@ class CleanCueApp {
 
     // Show window when ready
     this.mainWindow.once('ready-to-show', () => {
+      console.log('🪟 Main window ready-to-show event fired')
       this.mainWindow?.show()
+      console.log('🪟 Main window show() called')
     })
 
     // Handle window closed
@@ -253,13 +450,24 @@ class CleanCueApp {
     })
 
     // Handle engine operations (scan, analyze, export)
-    ipcMain.handle('engine-scan', async (_, folderPath: string) => {
+    ipcMain.handle('engine-scan', async (_, folderPath: string, options?: any) => {
       try {
         await this.initializeEngine()
         if (!this.engine) {
           return { success: false, error: 'Engine not initialized' }
         }
-        const result = await this.engine.scanLibrary([folderPath])
+        const result = await this.engine.scanLibrary([folderPath], options)
+
+        // If auto-analyze is enabled, queue tracks for analysis
+        if (options?.autoAnalyzeBpmKey && result.tracksAdded > 0) {
+          const newTracks = this.engine.getAllTracks().slice(-result.tracksAdded)
+          const trackIds = newTracks.map((track: any) => track.id)
+          // Queue them for analysis asynchronously
+          setTimeout(() => {
+            this.engine?.analyzeSelectedTracks(trackIds)
+          }, 1000)
+        }
+
         return {
           success: true,
           tracksFound: result.tracksScanned,
@@ -310,23 +518,29 @@ class CleanCueApp {
     })
 
     ipcMain.handle('engine-analyze', async (_, trackIds: string[]) => {
+      console.log(`[MAIN] engine-analyze called with ${trackIds.length} tracks:`, trackIds)
       try {
         await this.initializeEngine()
         if (!this.engine) {
+          console.error('[MAIN] Engine not initialized for analysis')
           return { success: false, error: 'Engine not initialized' }
         }
 
+        console.log('[MAIN] Starting analysis for tracks...')
         // Analyze specific tracks with BPM and key detection
         let analyzed = 0
         for (const trackId of trackIds) {
           try {
+            console.log(`[MAIN] Analyzing track ${trackId}...`)
             await this.engine.analyzeTrack(trackId, ['tempo', 'key', 'energy'])
             analyzed++
+            console.log(`[MAIN] Track ${trackId} analyzed successfully`)
           } catch (error) {
-            console.warn(`Failed to analyze track ${trackId}:`, error)
+            console.warn(`[MAIN] Failed to analyze track ${trackId}:`, error)
           }
         }
 
+        console.log(`[MAIN] Analysis complete. ${analyzed}/${trackIds.length} tracks analyzed`)
         return { success: true, analyzed }
       } catch (error) {
         console.error('Analysis failed:', error)
@@ -541,8 +755,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        // For now return empty array, implement actual analysis job tracking later
-        return { success: true, jobs: [] }
+        const jobs = this.engine.getAllAnalysisJobs()
+        return { success: true, jobs }
       } catch (error) {
         console.error('Failed to get analysis jobs:', error)
         return { success: false, error: (error as Error).message }
@@ -556,8 +770,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        // For now return empty array, implement actual health checking later
-        return { success: true, issues: [] }
+        const issues = this.engine.getLibraryHealth()
+        return { success: true, issues }
       } catch (error) {
         console.error('Failed to get library health:', error)
         return { success: false, error: (error as Error).message }
@@ -571,8 +785,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        // For now return empty array, implement actual health scanning later
-        return { success: true, issues: [] }
+        const result = await this.engine.scanLibraryHealth()
+        return result
       } catch (error) {
         console.error('Failed to scan library health:', error)
         return { success: false, error: (error as Error).message }
@@ -616,8 +830,8 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        // TODO: Implement duplicate detection
-        return []
+        const groups = this.engine.getDuplicateGroups()
+        return groups
       } catch (error) {
         console.error('Failed to get duplicate groups:', error)
         return []
@@ -631,11 +845,11 @@ class CleanCueApp {
           return { success: false, error: 'Engine not initialized' }
         }
 
-        // TODO: Implement duplicate scanning
-        return []
+        const result = await this.engine.scanForDuplicates()
+        return result
       } catch (error) {
         console.error('Failed to scan for duplicates:', error)
-        return []
+        return { success: false, error: (error as Error).message }
       }
     })
 
@@ -665,6 +879,160 @@ class CleanCueApp {
         return { success: true, software: [] }
       } catch (error) {
         console.error('Failed to detect DJ software:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    // Handle fixing health issues
+    ipcMain.handle('fix-health-issue', async (_, issueId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.fixHealthIssue(issueId)
+        return result
+      } catch (error) {
+        console.error('Failed to fix health issue:', error)
+        return { success: false, message: (error as Error).message }
+      }
+    })
+
+    // Handle saving general app settings
+    ipcMain.handle('save-settings', async (_, settings: any) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // Save general app settings to config
+        this.engine.updateConfig({
+          settings: settings
+        })
+
+        console.log('App settings saved successfully:', settings)
+        return { success: true }
+      } catch (error) {
+        console.error('Failed to save app settings:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    // Handle library import
+    ipcMain.handle('import-library-source', async (_, options: {
+      sourcePath: string
+      mode: 'copy' | 'link'
+      organization: string
+      libraryPath?: string
+      handleDuplicates: 'skip' | 'replace' | 'rename'
+      copyFormat: string
+      createBackup: boolean
+    }) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        // For now, implement basic import using existing scan functionality
+        if (options.mode === 'link') {
+          // Link mode: just scan the folder to add tracks to library without copying
+          const result = await this.engine.scanLibrary([options.sourcePath])
+          return {
+            success: true,
+            tracksImported: result.tracksAdded,
+            message: `Successfully linked ${result.tracksAdded} tracks from ${options.sourcePath}`
+          }
+        } else {
+          // Copy mode: for now, just do a scan (actual copying would need file system operations)
+          // TODO: Implement actual file copying with organization
+          const result = await this.engine.scanLibrary([options.sourcePath])
+          return {
+            success: true,
+            tracksImported: result.tracksAdded,
+            message: `Successfully imported ${result.tracksAdded} tracks (copy mode - files scanned but not yet physically copied)`
+          }
+        }
+      } catch (error) {
+        console.error('Failed to import library source:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    // YouTube downloader IPC handlers
+    ipcMain.handle('youtube-check-dependencies', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.checkYouTubeDependencies()
+        return { success: true, ...result }
+      } catch (error) {
+        console.error('Failed to check YouTube dependencies:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('youtube-get-video-info', async (_, url: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const videoInfo = await this.engine.getYouTubeVideoInfo(url)
+        return { success: true, videoInfo }
+      } catch (error) {
+        console.error('Failed to get YouTube video info:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('youtube-search-videos', async (_, query: string, maxResults: number = 10) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const searchResults = await this.engine.searchYouTubeVideos(query, maxResults)
+        return { success: true, results: searchResults }
+      } catch (error) {
+        console.error('Failed to search YouTube videos:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('youtube-download-audio', async (_, url: string, options: any = {}) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const downloadResult = await this.engine.downloadYouTubeAudio(url, options)
+        return downloadResult
+      } catch (error) {
+        console.error('Failed to download YouTube audio:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('youtube-download-batch', async (_, items: any[], globalOptions: any = {}) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const batchResults = await this.engine.downloadYouTubeBatch(items, globalOptions)
+        return { success: true, results: batchResults }
+      } catch (error) {
+        console.error('Failed to download YouTube batch:', error)
         return { success: false, error: (error as Error).message }
       }
     })

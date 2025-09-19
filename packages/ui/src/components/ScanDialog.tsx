@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X, Folder, Search, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -14,6 +14,17 @@ interface ScanProgress {
   errors: string[]
   newTracks: number
   duplicates: number
+  scanStartTime?: number
+  scanEndTime?: number
+}
+
+interface ScanSummary {
+  tracksScanned: number
+  tracksAdded: number
+  tracksUpdated: number
+  errors: string[]
+  duration: number
+  path: string
 }
 
 export function ScanDialog({ onClose }: ScanDialogProps) {
@@ -27,7 +38,98 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
     newTracks: 0,
     duplicates: 0
   })
+  const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null)
+  const [showLogs, setShowLogs] = useState(false)
+  const [scanLogs, setScanLogs] = useState<string[]>([])
+  const [includeSubdirectories, setIncludeSubdirectories] = useState(true)
+  const [skipDuplicateDetection, setSkipDuplicateDetection] = useState(true)
+  const [autoAnalyzeBpmKey, setAutoAnalyzeBpmKey] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Set up event listeners for scan progress
+  useEffect(() => {
+    if (!window.electronAPI) {
+      console.log('[UI] No electronAPI available');
+      return;
+    }
+
+    console.log('[UI] Setting up scan event listeners...');
+
+    const handleScanStarted = (...args: any[]) => {
+      const data = args.length > 1 ? args[1] : args[0];
+      console.log('[UI] Scan started event received:', data);
+      const logMessage = `🚀 Scan started for: ${data?.paths?.join(', ') || 'unknown path'}`;
+      setScanLogs(prev => [...prev, logMessage]);
+      setProgress(prev => ({
+        ...prev,
+        phase: 'scanning',
+        processed: 0,
+        total: 0,
+        scanStartTime: Date.now()
+      }));
+    };
+
+    const handleScanProgress = (...args: any[]) => {
+      const data = args.length > 1 ? args[1] : args[0];
+      console.log('[UI] Scan progress event received:', data);
+      if (data) {
+        const logMessage = `📁 Processing: ${data.currentFile || `File ${data.current || 0}`}`;
+        setScanLogs(prev => [...prev.slice(-20), logMessage]); // Keep last 20 logs
+        setProgress(prev => ({
+          ...prev,
+          phase: 'scanning',
+          processed: data.current || prev.processed,
+          total: data.total || prev.total,
+          currentFile: data.currentFile
+        }));
+      }
+    };
+
+    const handleScanCompleted = (...args: any[]) => {
+      const data = args.length > 1 ? args[1] : args[0];
+      console.log('[UI] Scan completed event received:', data);
+      const endTime = Date.now();
+      const logMessage = `✅ Scan completed! Found ${data?.tracksAdded || 0} new tracks, updated ${data?.tracksUpdated || 0} existing tracks`;
+      setScanLogs(prev => [...prev, logMessage]);
+
+      setProgress(prev => ({
+        ...prev,
+        phase: 'complete',
+        processed: data?.tracksScanned || prev.processed,
+        total: data?.tracksScanned || prev.total,
+        newTracks: data?.tracksAdded || 0,
+        duplicates: data?.tracksUpdated || 0,
+        scanEndTime: endTime
+      }));
+
+      setScanSummary(() => ({
+        tracksScanned: data?.tracksScanned || 0,
+        tracksAdded: data?.tracksAdded || 0,
+        tracksUpdated: data?.tracksUpdated || 0,
+        errors: data?.errors || [],
+        duration: endTime - (Date.now() - 1000), // Fallback duration
+        path: selectedPath
+      }));
+
+      setScanning(false);
+    };
+
+    // Add event listeners
+    console.log('[UI] Adding event listeners for scan events');
+    window.electronAPI.on('scan:started', handleScanStarted);
+    window.electronAPI.on('scan:progress', handleScanProgress);
+    window.electronAPI.on('scan:completed', handleScanCompleted);
+
+    // Cleanup on unmount
+    return () => {
+      console.log('[UI] Cleaning up scan event listeners');
+      if (window.electronAPI) {
+        window.electronAPI.removeListener('scan:started', handleScanStarted);
+        window.electronAPI.removeListener('scan:progress', handleScanProgress);
+        window.electronAPI.removeListener('scan:completed', handleScanCompleted);
+      }
+    };
+  }, [selectedPath]); // Add selectedPath as dependency
 
   const handleSelectFolder = async () => {
     if (window.electronAPI) {
@@ -63,19 +165,27 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
     if (!selectedPath) return
 
     setScanning(true)
+    setScanSummary(null)
+    setScanLogs([`🚀 Starting scan of: ${selectedPath}`])
     setProgress({
       phase: 'scanning',
       processed: 0,
       total: 0,
       errors: [],
       newTracks: 0,
-      duplicates: 0
+      duplicates: 0,
+      scanStartTime: Date.now()
     })
 
     try {
       if (window.electronAPI) {
         // Start real scan via Electron API
-        const scanResult = await window.electronAPI.engineScan(selectedPath)
+        const scanOptions = {
+          includeSubdirectories,
+          skipDuplicateDetection,
+          autoAnalyzeBpmKey
+        }
+        const scanResult = await window.electronAPI.engineScan(selectedPath, scanOptions)
 
         if (scanResult.success) {
           setProgress({
@@ -291,15 +401,30 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
               <h3 className="font-medium">Scan Options</h3>
               <div className="space-y-2">
                 <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked className="rounded border-gray-600 bg-gray-700 text-primary-600" />
+                  <input
+                    type="checkbox"
+                    checked={includeSubdirectories}
+                    onChange={(e) => setIncludeSubdirectories(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                  />
                   <span className="text-sm">Include subdirectories</span>
                 </label>
                 <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked className="rounded border-gray-600 bg-gray-700 text-primary-600" />
+                  <input
+                    type="checkbox"
+                    checked={skipDuplicateDetection}
+                    onChange={(e) => setSkipDuplicateDetection(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                  />
                   <span className="text-sm">Skip duplicate detection</span>
                 </label>
                 <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked className="rounded border-gray-600 bg-gray-700 text-primary-600" />
+                  <input
+                    type="checkbox"
+                    checked={autoAnalyzeBpmKey}
+                    onChange={(e) => setAutoAnalyzeBpmKey(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700 text-primary-600"
+                  />
                   <span className="text-sm">Auto-analyze BPM and key</span>
                 </label>
               </div>
@@ -317,6 +442,103 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
                 {progress.errors.map((error, index) => (
                   <div key={index}>{error}</div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Scan Summary */}
+          {scanSummary && progress.phase === 'complete' && (
+            <div className="bg-gray-700 rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium text-green-400">✅ Scan Complete</h3>
+                <div className="text-sm text-gray-400">
+                  {scanSummary.duration > 0 ? `${(scanSummary.duration / 1000).toFixed(1)}s` : ''}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Path:</span>
+                    <span className="text-sm font-mono">{scanSummary.path}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Files Scanned:</span>
+                    <span className="text-sm font-bold">{scanSummary.tracksScanned}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">New Tracks:</span>
+                    <span className="text-sm font-bold text-green-400">{scanSummary.tracksAdded}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Updated:</span>
+                    <span className="text-sm font-bold text-yellow-400">{scanSummary.tracksUpdated}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Errors:</span>
+                    <span className="text-sm font-bold text-red-400">{scanSummary.errors.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Success Rate:</span>
+                    <span className="text-sm font-bold text-green-400">
+                      {scanSummary.tracksScanned > 0 ? Math.round(((scanSummary.tracksScanned - scanSummary.errors.length) / scanSummary.tracksScanned) * 100) : 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {scanSummary.errors.length > 0 && (
+                <div className="bg-red-900/20 border border-red-700 rounded p-3">
+                  <div className="text-sm font-medium text-red-400 mb-2">Scan Errors:</div>
+                  <div className="text-xs text-red-300 space-y-1">
+                    {scanSummary.errors.slice(0, 5).map((error, index) => (
+                      <div key={index}>• {error}</div>
+                    ))}
+                    {scanSummary.errors.length > 5 && (
+                      <div className="text-gray-400">... and {scanSummary.errors.length - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons for completed scan */}
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {/* Navigate to library view */}}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm font-medium transition-colors"
+                >
+                  View Library ({scanSummary.tracksAdded} tracks)
+                </button>
+                <button
+                  onClick={() => setShowLogs(!showLogs)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md text-sm font-medium transition-colors"
+                >
+                  {showLogs ? 'Hide' : 'Show'} Logs
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Scan Logs */}
+          {showLogs && scanLogs.length > 0 && (
+            <div className="bg-gray-900 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium">Scan Logs</h3>
+                <button
+                  onClick={() => setScanLogs([])}
+                  className="text-xs text-gray-400 hover:text-white"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="bg-black rounded p-3 h-32 overflow-y-auto">
+                <div className="text-xs font-mono text-green-400 space-y-1">
+                  {scanLogs.map((log, index) => (
+                    <div key={index}>{log}</div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

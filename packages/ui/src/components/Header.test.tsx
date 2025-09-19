@@ -8,7 +8,7 @@ describe('Header', () => {
     const mockOnScan = vi.fn()
     const mockOnSettings = vi.fn()
 
-    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} />)
+    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} onImport={vi.fn()} onYouTubeDownloader={vi.fn()} />)
 
     expect(screen.getByText('CleanCue')).toBeInTheDocument()
     expect(screen.getByText('DJ Library Manager')).toBeInTheDocument()
@@ -19,7 +19,7 @@ describe('Header', () => {
     const mockOnScan = vi.fn()
     const mockOnSettings = vi.fn()
 
-    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} />)
+    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} onImport={vi.fn()} onYouTubeDownloader={vi.fn()} />)
 
     const scanButton = screen.getByRole('button', { name: /scan library/i })
     await user.click(scanButton)
@@ -32,7 +32,7 @@ describe('Header', () => {
     const mockOnScan = vi.fn()
     const mockOnSettings = vi.fn()
 
-    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} />)
+    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} onImport={vi.fn()} onYouTubeDownloader={vi.fn()} />)
 
     const settingsButton = screen.getByRole('button', { name: /settings/i })
     await user.click(settingsButton)
@@ -44,7 +44,7 @@ describe('Header', () => {
     const mockOnScan = vi.fn()
     const mockOnSettings = vi.fn()
 
-    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} />)
+    render(<Header onScan={mockOnScan} onSettings={mockOnSettings} onImport={vi.fn()} onYouTubeDownloader={vi.fn()} />)
 
     // The icons are SVGs rendered by lucide-react, we can check for their presence
     expect(screen.getByRole('button', { name: /scan library/i })).toBeInTheDocument()

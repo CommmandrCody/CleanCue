@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItemInFolder: (fullPath: string) => ipcRenderer.invoke('show-item-in-folder', fullPath),
 
   // Engine operations
-  engineScan: (folderPath: string) => ipcRenderer.invoke('engine-scan', folderPath),
+  engineScan: (folderPath: string, options?: any) => ipcRenderer.invoke('engine-scan', folderPath, options),
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
   engineClearLibrary: () => ipcRenderer.invoke('engine-clear-library'),
   getAllTracks: () => ipcRenderer.invoke('get-all-tracks'),
@@ -28,6 +28,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanForDuplicates: () => ipcRenderer.invoke('scan-for-duplicates'),
   saveAnalysisSettings: (settings: any) => ipcRenderer.invoke('save-analysis-settings', settings),
   detectDJSoftware: () => ipcRenderer.invoke('detect-dj-software'),
+  saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
+  fixHealthIssue: (issueId: string) => ipcRenderer.invoke('fix-health-issue', issueId),
+  importLibrarySource: (options: {
+    sourcePath: string
+    mode: 'copy' | 'link'
+    organization: string
+    libraryPath?: string
+    handleDuplicates: 'skip' | 'replace' | 'rename'
+    copyFormat: string
+    createBackup: boolean
+  }) => ipcRenderer.invoke('import-library-source', options),
 
   // Additional API methods for UI components
   getAnalysisJobs: () => ipcRenderer.invoke('get-analysis-jobs'),
@@ -46,12 +57,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stemGetDefaultSettings: () => ipcRenderer.invoke('stem-get-default-settings'),
   stemEstimateTime: (trackId: string, model: string) => ipcRenderer.invoke('stem-estimate-time', trackId, model),
 
+  // YouTube downloader operations
+  youtubeCheckDependencies: () => ipcRenderer.invoke('youtube-check-dependencies'),
+  youtubeGetVideoInfo: (url: string) => ipcRenderer.invoke('youtube-get-video-info', url),
+  youtubeSearchVideos: (query: string, maxResults?: number) => ipcRenderer.invoke('youtube-search-videos', query, maxResults),
+  youtubeDownloadAudio: (url: string, options?: any) => ipcRenderer.invoke('youtube-download-audio', url, options),
+  youtubeDownloadBatch: (items: any[], globalOptions?: any) => ipcRenderer.invoke('youtube-download-batch', items, globalOptions),
+
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => {
     ipcRenderer.on('scan-library', (_, folderPath) => callback(folderPath))
   },
   onExportPlaylist: (callback: () => void) => {
     ipcRenderer.on('export-playlist', () => callback())
+  },
+
+  // Event listeners for progress events
+  on: (channel: string, listener: (...args: any[]) => void) => {
+    ipcRenderer.on(channel, listener)
+  },
+  removeListener: (channel: string, listener: (...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, listener)
   },
 
   // Remove listeners
@@ -81,6 +107,17 @@ export interface ElectronAPI {
   scanForDuplicates: () => Promise<{ success: boolean }>
   saveAnalysisSettings: (settings: any) => Promise<{ success: boolean }>
   detectDJSoftware: () => Promise<{ success: boolean; software: string[] }>
+  saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>
+  fixHealthIssue: (issueId: string) => Promise<{ success: boolean; message: string }>
+  importLibrarySource: (options: {
+    sourcePath: string
+    mode: 'copy' | 'link'
+    organization: string
+    libraryPath?: string
+    handleDuplicates: 'skip' | 'replace' | 'rename'
+    copyFormat: string
+    createBackup: boolean
+  }) => Promise<{ success: boolean; tracksImported?: number; message?: string; error?: string }>
 
   // STEM Separation API
   stemCheckDependencies: () => Promise<{ success: boolean; available: boolean; missingDeps: string[] }>
@@ -94,8 +131,17 @@ export interface ElectronAPI {
   stemGetDefaultSettings: () => Promise<{ success: boolean; settings: any }>
   stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
 
+  // YouTube downloader API
+  youtubeCheckDependencies: () => Promise<{ success: boolean; available?: boolean; error?: string }>
+  youtubeGetVideoInfo: (url: string) => Promise<{ success: boolean; videoInfo?: any; error?: string }>
+  youtubeSearchVideos: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: any[]; error?: string }>
+  youtubeDownloadAudio: (url: string, options?: any) => Promise<{ success: boolean; downloadedFiles?: string[]; outputDir?: string; error?: string }>
+  youtubeDownloadBatch: (items: any[], globalOptions?: any) => Promise<{ success: boolean; results?: any[]; error?: string }>
+
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
+  on: (channel: string, listener: (...args: any[]) => void) => void
+  removeListener: (channel: string, listener: (...args: any[]) => void) => void
   removeAllListeners: (channel: string) => void
 }
 

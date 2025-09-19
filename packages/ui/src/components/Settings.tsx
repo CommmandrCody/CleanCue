@@ -21,6 +21,7 @@ interface AppSettings {
   analysis: {
     autoAnalyze: boolean
     analyzeOnImport: boolean
+    writeTagsToFiles: boolean
     bpmRange: { min: number; max: number }
   }
   ui: {
@@ -45,6 +46,7 @@ const defaultSettings: AppSettings = {
   analysis: {
     autoAnalyze: false,
     analyzeOnImport: false,
+    writeTagsToFiles: true,
     bpmRange: { min: 60, max: 200 }
   },
   ui: {
@@ -62,10 +64,18 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
   const handleSave = async () => {
     try {
-      if (window.electronAPI && (window.electronAPI as any).saveSettings) {
-        await (window.electronAPI as any).saveSettings(settings)
+      if (window.electronAPI) {
+        const result = await window.electronAPI.saveSettings(settings)
+        if (result.success) {
+          console.log('Settings saved successfully')
+          onClose()
+        } else {
+          console.error('Failed to save settings:', result.error)
+        }
+      } else {
+        console.log('Web mode: Settings would be saved locally')
+        onClose()
       }
-      onClose()
     } catch (error) {
       console.error('Failed to save settings:', error)
     }
@@ -251,6 +261,19 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
                     />
                     <span>Analyze tracks immediately on import</span>
+                  </label>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.analysis.writeTagsToFiles}
+                      onChange={(e) => updateSettings('analysis', { writeTagsToFiles: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <div className="flex flex-col">
+                      <span>Write tags to audio files</span>
+                      <span className="text-xs text-gray-400">Write BPM, key, and energy data to file metadata tags</span>
+                    </div>
                   </label>
                 </div>
 

@@ -9,7 +9,7 @@ export interface ElectronAPI {
   showItemInFolder: (fullPath: string) => Promise<void>
 
   // Engine operations
-  engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number; error?: string }>
+  engineScan: (folderPath: string, options?: any) => Promise<{ success: boolean; tracksFound: number; error?: string }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[]; error?: string }>
   engineClearLibrary: () => Promise<{ success: boolean; removedCount: number; error?: string }>
   getAllTracks: () => Promise<any[]>
@@ -30,7 +30,19 @@ export interface ElectronAPI {
   getAnalysisJobs: () => Promise<{ success: boolean; jobs: any[] }>
   getLibraryHealth: () => Promise<{ success: boolean; issues: any[] }>
   scanLibraryHealth: () => Promise<{ success: boolean; issues: any[] }>
+  saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>
+  fixHealthIssue: (issueId: string) => Promise<{ success: boolean; message: string }>
 
+  // Library Import operations
+  importLibrarySource: (options: {
+    sourcePath: string
+    mode: 'copy' | 'link'
+    organization: 'artist-album' | 'genre-artist' | 'flat' | 'preserve'
+    libraryPath: string
+    handleDuplicates: 'skip' | 'replace' | 'rename'
+    copyFormat: 'original' | 'mp3-320' | 'flac'
+    createBackup: boolean
+  }) => Promise<{ success: boolean; importedCount: number; skippedCount: number; error?: string }>
 
   // STEM Separation operations
   stemCheckDependencies: () => Promise<{ success: boolean; available: boolean; missingDeps: string[] }>
@@ -44,9 +56,18 @@ export interface ElectronAPI {
   stemGetDefaultSettings: () => Promise<{ success: boolean; settings: any; error?: string }>
   stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
 
+  // YouTube downloader operations
+  youtubeCheckDependencies: () => Promise<{ success: boolean; available?: boolean; error?: string }>
+  youtubeGetVideoInfo: (url: string) => Promise<{ success: boolean; videoInfo?: any; error?: string }>
+  youtubeSearchVideos: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: any[]; error?: string }>
+  youtubeDownloadAudio: (url: string, options?: any) => Promise<{ success: boolean; downloadedFiles?: string[]; outputDir?: string; error?: string }>
+  youtubeDownloadBatch: (items: any[], globalOptions?: any) => Promise<{ success: boolean; results?: any[]; error?: string }>
+
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
+  on: (channel: string, listener: (...args: any[]) => void) => void
+  removeListener: (channel: string, listener: (...args: any[]) => void) => void
   removeAllListeners: (channel: string) => void
 }
 
