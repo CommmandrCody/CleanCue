@@ -51,11 +51,20 @@ export class YouTubeDownloaderService extends EventEmitter {
   private workersPath: string;
   private defaultOutputDir: string;
 
-  constructor(workersPath: string, pythonPath: string = 'python3') {
+  constructor(workersPath?: string, pythonPath: string = 'python3') {
     super();
     this.pythonPath = pythonPath;
-    this.workersPath = workersPath;
+    this.workersPath = workersPath || '';
     this.defaultOutputDir = path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', 'Downloads', 'CleanCue');
+  }
+
+  /**
+   * Update the workers and python paths
+   */
+  updatePaths(workersPath: string, pythonPath: string = 'python3') {
+    this.workersPath = workersPath;
+    this.pythonPath = pythonPath;
+    console.log('YouTube downloader paths updated:', { workersPath, pythonPath });
   }
 
   /**
@@ -249,7 +258,17 @@ export class YouTubeDownloaderService extends EventEmitter {
    */
   private async runPythonScript(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
+      // Validate that workersPath is properly configured
+      if (!this.workersPath || this.workersPath.length === 0) {
+        reject(new Error('YouTube downloader workers path not configured. Please ensure the engine configuration is properly set.'));
+        return;
+      }
+
+      // Resolve the script path at runtime to ensure we have the latest workersPath
       const scriptPath = path.join(this.workersPath, 'youtube-downloader.py');
+      console.log('YouTube downloader script path:', scriptPath);
+      console.log('Workers path:', this.workersPath);
+
       const pythonArgs = [scriptPath, command, ...args];
 
       const pythonProcess = spawn(this.pythonPath, pythonArgs, {

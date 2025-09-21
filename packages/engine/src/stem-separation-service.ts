@@ -32,12 +32,51 @@ export class StemSeparationService {
   private outputBaseDir: string;
   private pythonExecutable: string;
   private separatorScript: string;
+  private workersPath: string;
+  private runningProcesses: Map<string, any> = new Map(); // Track running Python processes
 
-  constructor(db: CleanCueDatabase, outputDir?: string) {
+  constructor(db: CleanCueDatabase, outputDir?: string, workersPath?: string, pythonPath?: string) {
     this.db = db;
     this.outputBaseDir = outputDir || path.join(process.cwd(), 'stems');
-    this.pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-    this.separatorScript = path.join(__dirname, 'stem-separator.py');
+    this.workersPath = workersPath || path.join(process.cwd(), 'packages', 'workers');
+
+    // Use the provided Python path or fall back to virtual environment Python
+    this.pythonExecutable = pythonPath || path.join(this.workersPath, 'venv', 'bin', 'python');
+
+    // Handle both development and production paths for the Python script
+    // In development: __dirname points to src/, script is in src/
+    // In production: __dirname points to dist/, but script should be in src/
+    const srcScript = path.join(__dirname, 'stem-separator.py');
+    const distScript = path.join(__dirname, '..', 'src', 'stem-separator.py');
+
+    // Try src first (development), then dist fallback (production)
+    try {
+      require('fs').accessSync(srcScript);
+      this.separatorScript = srcScript;
+      console.log(`🎵 [STEM-SERVICE] Using development script path: ${srcScript}`);
+    } catch {
+      this.separatorScript = distScript;
+      console.log(`🎵 [STEM-SERVICE] Using production script path: ${distScript}`);
+    }
+
+    console.log(`🎵 [STEM-SERVICE] Configuration:`, {
+      pythonExecutable: this.pythonExecutable,
+      separatorScript: this.separatorScript,
+      workersPath: this.workersPath,
+      outputBaseDir: this.outputBaseDir
+    });
+
+    // Ensure base output directory exists with proper permissions
+    this.ensureBaseDirectory();
+  }
+
+  private async ensureBaseDirectory(): Promise<void> {
+    try {
+      await fs.mkdir(this.outputBaseDir, { recursive: true, mode: 0o755 });
+      await fs.chmod(this.outputBaseDir, 0o755);
+    } catch (error) {
+      console.warn('Could not create/set permissions for base stems directory:', error);
+    }
   }
 
   async checkDependencies(): Promise<{ available: boolean; missingDeps: string[] }> {
@@ -74,7 +113,7 @@ export class StemSeparationService {
         python.on('error', reject);
       });
     } catch {
-      missingDeps.push('demucs (pip install demucs)');
+      missingDeps.push('demucs');
     }
 
     try {
@@ -91,7 +130,24 @@ export class StemSeparationService {
         python.on('error', reject);
       });
     } catch {
-      missingDeps.push('torch (pip install torch torchaudio)');
+      missingDeps.push('torch');
+    }
+
+    try {
+      // Check if torchaudio is installed
+      await new Promise((resolve, reject) => {
+        const python = spawn(this.pythonExecutable, ['-c', 'import torchaudio; print("OK")']);
+        python.on('close', (code) => {
+          if (code === 0) {
+            resolve(true);
+          } else {
+            reject(new Error('TorchAudio not found'));
+          }
+        });
+        python.on('error', reject);
+      });
+    } catch {
+      missingDeps.push('torchaudio');
     }
 
     return {
@@ -100,11 +156,84 @@ export class StemSeparationService {
     };
   }
 
+  async installDependencies(onProgress?: (message: string) => void): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('🎵 [STEM-SERVICE] Installing Python dependencies for STEM separation...');
+      onProgress?.('Installing STEM separation dependencies...');
+
+      // Use the dependency installer script
+      const installerScript = path.join(this.workersPath, 'src', 'dependency_installer.py');
+
+      return new Promise((resolve) => {
+        const installer = spawn(this.pythonExecutable, [installerScript, '--install-stems'], {
+          cwd: this.workersPath
+        });
+
+        installer.stdout.on('data', (data) => {
+          const output = data.toString();
+          console.log(`🎵 [STEM-INSTALL] ${output}`);
+          onProgress?.(output.trim());
+        });
+
+        installer.stderr.on('data', (data) => {
+          const error = data.toString();
+          console.log(`🎵 [STEM-INSTALL] ${error}`);
+          onProgress?.(error.trim());
+        });
+
+        installer.on('close', (code) => {
+          if (code === 0) {
+            console.log('🎵 [STEM-SERVICE] ✅ Dependencies installed successfully');
+            onProgress?.('Dependencies installed successfully!');
+            resolve({ success: true });
+          } else {
+            const errorMsg = `Failed to install dependencies (exit code: ${code})`;
+            console.error(`🎵 [STEM-SERVICE] ❌ ${errorMsg}`);
+            resolve({ success: false, error: errorMsg });
+          }
+        });
+
+        installer.on('error', (error) => {
+          const errorMsg = `Installation process error: ${error.message}`;
+          console.error(`🎵 [STEM-SERVICE] ❌ ${errorMsg}`);
+          resolve({ success: false, error: errorMsg });
+        });
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error during installation';
+      console.error(`🎵 [STEM-SERVICE] ❌ ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+  }
+
   async startSeparation(
     trackId: string,
     inputPath: string,
-    settings: StemSeparationSettings
+    settings: StemSeparationSettings,
+    onProgress?: (message: string) => void
   ): Promise<string> {
+    // Check if dependencies are available
+    console.log('🎵 [STEM-SERVICE] Checking dependencies...');
+    const depCheck = await this.checkDependencies();
+
+    if (!depCheck.available) {
+      console.log(`🎵 [STEM-SERVICE] Missing dependencies: ${depCheck.missingDeps.join(', ')}`);
+      onProgress?.(`Installing missing dependencies: ${depCheck.missingDeps.join(', ')}`);
+
+      // Auto-install missing dependencies
+      const installResult = await this.installDependencies(onProgress);
+
+      if (!installResult.success) {
+        throw new Error(`Failed to install dependencies: ${installResult.error}`);
+      }
+
+      // Re-check dependencies after installation
+      const recheckResult = await this.checkDependencies();
+      if (!recheckResult.available) {
+        throw new Error(`Dependencies still missing after installation: ${recheckResult.missingDeps.join(', ')}`);
+      }
+    }
+
     // Create database entry
     const separationId = await this.db.insertStemSeparation({
       trackId,
@@ -116,7 +245,14 @@ export class StemSeparationService {
 
     // Create output directory for this separation
     const outputDir = path.join(this.outputBaseDir, separationId);
-    await fs.mkdir(outputDir, { recursive: true });
+    await fs.mkdir(outputDir, { recursive: true, mode: 0o755 });
+
+    // Ensure proper ownership/permissions in case process has elevated permissions
+    try {
+      await fs.chmod(outputDir, 0o755);
+    } catch (error) {
+      console.warn('Could not set directory permissions:', error);
+    }
 
     // Start the separation process
     this.runSeparation(separationId, inputPath, outputDir, settings);
@@ -155,6 +291,9 @@ export class StemSeparationService {
       // Spawn Python process
       const python = spawn(this.pythonExecutable, args);
 
+      // Track the running process
+      this.runningProcesses.set(separationId, python);
+
       // Handle stdout
       python.stdout.on('data', (data) => {
         const output = data.toString();
@@ -169,6 +308,9 @@ export class StemSeparationService {
 
       // Handle process completion
       python.on('close', (code) => {
+        // Remove from tracking when process completes
+        this.runningProcesses.delete(separationId);
+
         if (code === 0) {
           console.log(`STEM separation completed successfully: ${separationId}`);
         } else {
@@ -182,6 +324,9 @@ export class StemSeparationService {
 
       // Handle process errors
       python.on('error', (error) => {
+        // Remove from tracking on error
+        this.runningProcesses.delete(separationId);
+
         console.error(`STEM separation process error: ${error.message}`);
         this.db.updateStemSeparation(separationId, {
           status: 'error',
@@ -212,17 +357,35 @@ export class StemSeparationService {
 
   async cancelSeparation(separationId: string): Promise<boolean> {
     try {
+      console.log(`🎵 [STEM-SERVICE] Cancelling separation: ${separationId}`);
+
+      // Kill the running process if it exists
+      const process = this.runningProcesses.get(separationId);
+      if (process) {
+        console.log(`🎵 [STEM-SERVICE] Killing Python process for: ${separationId}`);
+        process.kill('SIGTERM');
+
+        // Give it a moment, then force kill if needed
+        setTimeout(() => {
+          if (this.runningProcesses.has(separationId)) {
+            console.log(`🎵 [STEM-SERVICE] Force killing process for: ${separationId}`);
+            process.kill('SIGKILL');
+          }
+        }, 5000);
+
+        this.runningProcesses.delete(separationId);
+      }
+
       // Update database status
       this.db.updateStemSeparation(separationId, {
         status: 'error',
         errorMessage: 'Cancelled by user'
       });
 
-      // TODO: Keep track of running processes and kill them
-      // For now, just update the database
+      console.log(`🎵 [STEM-SERVICE] ✅ Separation cancelled: ${separationId}`);
       return true;
     } catch (error) {
-      console.error(`Failed to cancel separation: ${error}`);
+      console.error(`🎵 [STEM-SERVICE] ❌ Failed to cancel separation: ${error}`);
       return false;
     }
   }
@@ -284,5 +447,13 @@ export class StemSeparationService {
 
     // Add overhead for loading model, I/O, etc.
     return Math.round(estimatedSeconds + 30);
+  }
+
+  getRunningProcessCount(): number {
+    return this.runningProcesses.size;
+  }
+
+  getRunningProcesses(): string[] {
+    return Array.from(this.runningProcesses.keys());
   }
 }

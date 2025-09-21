@@ -18,7 +18,23 @@ export class ConfigManager {
     return path.join(configDir, 'config.json');
   }
 
+  private getWorkersPath(): string {
+    // Check if we're running in a packaged Electron app
+    // @ts-ignore - process.resourcesPath is available in Electron environment
+    if (process.resourcesPath) {
+      // Production: workers are in app bundle Resources folder
+      // @ts-ignore - process.resourcesPath is available in Electron environment
+      return path.join(process.resourcesPath, 'workers');
+    }
+
+    // Development: workers are relative to this compiled file
+    return path.resolve(__dirname, '../../workers');
+  }
+
   private getDefaultConfig(): Config {
+    const workersPath = this.getWorkersPath();
+    const pythonPath = path.join(workersPath, 'venv', 'bin', 'python');
+
     return {
       database: {
         path: path.join(os.homedir(), '.cleancue', 'library.db')
@@ -32,8 +48,13 @@ export class ConfigManager {
       },
       workers: {
         maxWorkers: Math.max(1, Math.floor(os.cpus().length / 2)),
+        maxConcurrentJobs: Math.max(1, Math.floor(os.cpus().length / 4)), // Conservative default
         jobTimeout: 300000, // 5 minutes
-        retryAttempts: 2
+        retryAttempts: 2,
+        workersPath: workersPath,
+        pythonPath: pythonPath,
+        watchdogInterval: 30000, // 30 seconds
+        maxJobAge: 600000 // 10 minutes
       },
       analyzers: {
         tempo: {
@@ -66,6 +87,11 @@ export class ConfigManager {
           }
         }
       },
+      stems: {
+        outputPath: path.join(os.homedir(), '.cleancue', 'stems'),
+        tempPath: path.join(os.homedir(), '.cleancue', 'temp'),
+        enabled: true
+      },
       export: {
         defaultFormat: 'm3u',
         relativePaths: true,
@@ -84,7 +110,7 @@ export class ConfigManager {
     try {
       // Ensure config directory exists
       const configDir = path.dirname(this.configPath);
-      await fs.mkdir(configDir, { recursive: true });
+      await fs.mkdir(configDir, { recursive: true, mode: 0o755 });
 
       // Try to load existing config
       const configData = await fs.readFile(this.configPath, 'utf8');

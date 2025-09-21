@@ -30,7 +30,7 @@ export class CleanCueEngine {
     this.workerPool = new WorkerPool(this.config.get('workers'));
     this.events = new EventBus();
     this.usbExporter = new USBExporter();
-    this.stemSeparationService = new StemSeparationService(this.db, this.config.get('stems.outputPath'));
+    this.stemSeparationService = new StemSeparationService(this.db, this.config.get('stems.outputPath'), this.config.get('workers.workersPath'), this.config.get('workers.pythonPath'));
     this.youtubeDownloader = new YouTubeDownloaderService(
       this.config.get('workers.workersPath'),
       this.config.get('workers.pythonPath')
@@ -259,91 +259,119 @@ export class CleanCueEngine {
     const enabledAnalyzers = this.config.get('analyzers');
     const activeAnalyzers = analyzers.filter(name => enabledAnalyzers[name]?.enabled);
 
-    for (const analyzerName of activeAnalyzers) {
+    // Run analyzers in parallel with individual error handling
+    const analyzerPromises = activeAnalyzers.map(async (analyzerName) => {
       const analyzerConfig = enabledAnalyzers[analyzerName];
-      
-      // Create pending analysis record
-      const analysis = await this.db.insertAnalysis({
-        trackId,
-        analyzerName,
-        analyzerVersion: '1.0.0', // TODO: Get from analyzer
-        parameters: analyzerConfig.parameters || {},
-        results: {},
-        status: 'pending'
-      });
 
-      // Submit job to worker pool and wait for completion
-      const result = await this.workerPool.submitJob({
-        id: analysis.id,
-        trackId,
-        audioPath: track.path,
-        analyzer: analyzerName,
-        parameters: analyzerConfig.parameters || {}
-      });
+      try {
+        // Create pending analysis record
+        const analysis = await this.db.insertAnalysis({
+          trackId,
+          analyzerName,
+          analyzerVersion: '1.0.0', // TODO: Get from analyzer
+          parameters: analyzerConfig.parameters || {},
+          results: {},
+          status: 'pending'
+        });
 
-      // Update analysis with results
-      this.db.updateAnalysis(analysis.id, {
-        results: result.results,
-        status: result.status
-      });
+        console.log(`🔍 Starting ${analyzerName} analysis for track ${trackId}`);
 
-      // If analysis completed successfully, update the track record
-      if (result.status === 'completed' && result.results) {
-        const updates: any = {};
+        // Submit job to worker pool with individual timeout and error handling
+        const result = await Promise.race([
+          this.workerPool.submitJob({
+            id: analysis.id,
+            trackId,
+            audioPath: track.path,
+            analyzer: analyzerName,
+            parameters: analyzerConfig.parameters || {}
+          }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(`${analyzerName} analysis timeout`)), 120000) // 2 minute timeout per analyzer
+          })
+        ]);
 
-        console.log(`🔍 ANALYSIS DEBUG - Analyzer: ${analyzerName}`);
-        console.log(`🔍 Raw analysis results:`, result.results);
+        // Update analysis with results
+        this.db.updateAnalysis(analysis.id, {
+          results: result.results,
+          status: result.status
+        });
 
-        // Extract BPM from tempo analysis
-        if (analyzerName === 'tempo' && result.results.tempo) {
-          updates.bpm = Math.round(result.results.tempo);
-          console.log(`🔍 Setting BPM: ${updates.bpm} (from tempo: ${result.results.tempo})`);
-        }
+        console.log(`✅ ${analyzerName} analysis completed for track ${trackId}`);
+        return { analyzerName, result };
 
-        // Extract key from key analysis
-        if (analyzerName === 'key' && result.results.key) {
-          updates.key = result.results.key;
-          console.log(`🔍 Setting key: ${updates.key}`);
-        }
+      } catch (error) {
+        console.error(`❌ ${analyzerName} analysis failed for track ${trackId}:`, error.message);
 
-        // Extract energy from energy analysis
-        if (analyzerName === 'energy' && result.results.energy_stats?.mean) {
-          updates.energy = Math.round(result.results.energy_stats.mean * 100); // Convert to 0-100 scale
-          console.log(`🔍 Setting energy: ${updates.energy} (from energy_stats.mean: ${result.results.energy_stats.mean})`);
-        }
-
-        console.log(`🔍 Updates to apply:`, updates);
-
-        // Update the track record if we have any updates
-        if (Object.keys(updates).length > 0) {
-          console.log(`🔍 Calling updateTrack with trackId: ${trackId}, updates:`, updates);
-          this.db.updateTrack(trackId, updates);
-
-          // Verify the update worked by reading back the track
-          const updatedTrack = this.db.getTrack(trackId);
-          console.log(`🔍 Track after update:`, {
-            id: updatedTrack?.id,
-            path: updatedTrack?.path,
-            bpm: updatedTrack?.bpm,
-            key: updatedTrack?.key,
-            energy: updatedTrack?.energy
+        // Mark as failed in database
+        try {
+          const analysis = await this.db.insertAnalysis({
+            trackId,
+            analyzerName,
+            analyzerVersion: '1.0.0',
+            parameters: analyzerConfig.parameters || {},
+            results: {},
+            status: 'failed'
           });
 
-          console.log(`[ENGINE] ✅ Updated track ${trackId} with analysis results:`, updates);
-
-          // Write tags to file if setting is enabled
-          await this.writeTagsToFile(trackId, updates);
-        } else {
-          console.log(`🔍 No updates to apply for ${analyzerName} analysis`);
+          this.db.updateAnalysis(analysis.id, {
+            results: { error: error.message },
+            status: 'failed'
+          });
+        } catch (dbError) {
+          console.error(`Failed to record ${analyzerName} analysis failure:`, dbError);
         }
-      } else {
-        console.log(`🔍 Analysis not completed or no results - status: ${result.status}, hasResults: ${!!result.results}`);
+
+        return { analyzerName, error: error.message };
+      }
+    });
+
+    // Wait for all analyzers to complete (or fail)
+    const results = await Promise.allSettled(analyzerPromises);
+
+    // Process results and update track records
+    const allUpdates: any = {};
+
+    for (const promiseResult of results) {
+      if (promiseResult.status === 'fulfilled' && promiseResult.value.result) {
+        const { analyzerName, result } = promiseResult.value;
+
+        // If analysis completed successfully, extract data for track updates
+        if (result.status === 'completed' && result.results) {
+          console.log(`🔍 ANALYSIS DEBUG - Analyzer: ${analyzerName}`);
+          console.log(`🔍 Raw analysis results:`, result.results);
+
+          // Extract BPM from tempo analysis
+          if (analyzerName === 'tempo' && result.results.tempo) {
+            allUpdates.bpm = Math.round(result.results.tempo);
+            console.log(`🔍 Setting BPM: ${allUpdates.bpm} (from tempo: ${result.results.tempo})`);
+          }
+
+          // Extract key from key analysis
+          if (analyzerName === 'key' && result.results.key) {
+            allUpdates.key = result.results.key;
+            console.log(`🔍 Setting key: ${allUpdates.key}`);
+          }
+
+          // Extract energy from energy analysis
+          if (analyzerName === 'energy' && result.results.energy_stats?.mean) {
+            allUpdates.energy = Math.round(result.results.energy_stats.mean * 100); // Convert to 0-100 scale
+            console.log(`🔍 Setting energy: ${allUpdates.energy} (from energy_stats.mean: ${result.results.energy_stats.mean})`);
+          }
+        }
       }
     }
+
+    // Apply all updates to the track at once
+    if (Object.keys(allUpdates).length > 0) {
+      console.log(`🔍 Updating track ${trackId} with:`, allUpdates);
+      this.db.updateTrack(trackId, allUpdates);
+    }
+
+    console.log(`✅ Analysis completed for track ${trackId}`);
   }
 
   async analyzeSelectedTracks(trackIds: string[], analyzers: string[] = ['tempo', 'key', 'energy']): Promise<void> {
-    console.log(`[ENGINE] 🎯 Starting analysis of ${trackIds.length} selected tracks...`);
+    console.log(`[ENGINE] 🎯 Starting batch analysis of ${trackIds.length} selected tracks...`);
 
     this.events.emit('analysis:started', {
       trackIds,
@@ -352,7 +380,10 @@ export class CleanCueEngine {
     });
 
     let completed = 0;
-    for (const trackId of trackIds) {
+    const maxConcurrent = this.config.get('workers.maxConcurrentJobs') || 2;
+
+    // Process tracks in concurrent batches
+    const promises = trackIds.map(async (trackId) => {
       try {
         await this.analyzeTrack(trackId, analyzers);
         completed++;
@@ -368,8 +399,12 @@ export class CleanCueEngine {
 
       } catch (error) {
         console.error(`[ENGINE] ❌ Analysis failed for track ${trackId}:`, error);
+        completed++; // Count failures as completed for progress tracking
       }
-    }
+    });
+
+    // Wait for all tracks to complete
+    await Promise.all(promises);
 
     this.events.emit('analysis:completed', {
       totalTracks: trackIds.length,
@@ -671,6 +706,15 @@ export class CleanCueEngine {
 
   updateConfig(updates: Partial<Config>): void {
     this.config.update(updates);
+
+    // Update YouTube downloader paths if workers config was updated
+    if (updates.workers) {
+      const workersPath = this.config.get('workers.workersPath');
+      const pythonPath = this.config.get('workers.pythonPath');
+      if (workersPath && pythonPath) {
+        this.youtubeDownloader.updatePaths(workersPath, pythonPath);
+      }
+    }
   }
 
   getAllTracks(): Track[] {
@@ -838,7 +882,7 @@ export class CleanCueEngine {
     return this.stemSeparationService.checkDependencies();
   }
 
-  async startStemSeparation(trackId: string, settings?: Partial<StemSeparationSettings>): Promise<string> {
+  async startStemSeparation(trackId: string, settings?: Partial<StemSeparationSettings>, onProgress?: (message: string) => void): Promise<string> {
     const track = this.db.getTrack(trackId);
     if (!track) {
       throw new Error(`Track not found: ${trackId}`);
@@ -862,7 +906,8 @@ export class CleanCueEngine {
     const separationId = await this.stemSeparationService.startSeparation(
       trackId,
       track.path,
-      separationSettings
+      separationSettings,
+      onProgress
     );
 
     return separationId;
@@ -1363,6 +1408,19 @@ export class CleanCueEngine {
       console.error(`[ENGINE] ❌ Tag writing failed for track ${trackId}:`, error);
       // Don't throw - tag writing failure shouldn't stop analysis
     }
+  }
+
+  // Worker management and monitoring
+  getWorkerStatus(): { activeJobs: number; queuedJobs: number; details: Array<{jobId: string, analyzer: string, ageSeconds: number}> } {
+    return this.workerPool.getStatus();
+  }
+
+  clearAnalysisQueue(): void {
+    this.workerPool.clearQueue();
+  }
+
+  killAllAnalysisJobs(): void {
+    this.workerPool.killAllJobs();
   }
 
   close(): void {
