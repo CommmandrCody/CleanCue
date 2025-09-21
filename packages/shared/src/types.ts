@@ -253,14 +253,24 @@ export interface Config {
   };
   workers: {
     maxWorkers: number;
+    maxConcurrentJobs: number;
     jobTimeout: number;
     retryAttempts: number;
+    workersPath?: string;
+    pythonPath?: string;
+    watchdogInterval: number;
+    maxJobAge: number;
   };
   analyzers: {
     [key: string]: {
       enabled: boolean;
       parameters: Record<string, any>;
     };
+  };
+  stems: {
+    outputPath: string;
+    tempPath?: string;
+    enabled: boolean;
   };
   export: {
     defaultFormat: string;
