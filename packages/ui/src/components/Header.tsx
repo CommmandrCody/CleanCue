@@ -1,15 +1,18 @@
 import { Disc, Search, Settings, FolderPlus, Youtube, Eye, EyeOff } from 'lucide-react'
+import { DownloadStatusIndicator } from './DownloadStatusIndicator'
+import { StemQueueIndicator } from './StemQueueIndicator'
 
 interface HeaderProps {
   onScan: () => void
   onSettings: () => void
   onImport: () => void
   onYouTubeDownloader: () => void
+  onStemQueue?: () => void
   showLogViewer?: boolean
   onToggleLogViewer?: () => void
 }
 
-export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, showLogViewer, onToggleLogViewer }: HeaderProps) {
+export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onStemQueue, showLogViewer, onToggleLogViewer }: HeaderProps) {
   return (
     <header className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 px-6 py-4 shadow-lg drag-region">
       <div className="flex items-center justify-between">
@@ -52,6 +55,12 @@ export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, show
             Scan Library
           </button>
 
+          {/* Download Status Indicator */}
+          <DownloadStatusIndicator />
+
+          {/* STEM Queue Indicator */}
+          <StemQueueIndicator onClick={onStemQueue} />
+
           {onToggleLogViewer && (
             <button
               onClick={onToggleLogViewer}
@@ -61,7 +70,7 @@ export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, show
               aria-label={showLogViewer ? 'Hide log viewer' : 'Show log viewer'}
               title={showLogViewer ? 'Hide transparency logs' : 'Show transparency logs'}
             >
-              {showLogViewer ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {showLogViewer ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
             </button>
           )}
 

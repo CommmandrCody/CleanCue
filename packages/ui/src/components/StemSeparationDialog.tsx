@@ -85,18 +85,27 @@ export function StemSeparationDialog({ isOpen, onClose, selectedTracks }: StemSe
   if (!isOpen) return null
 
   const handleStartSeparation = async () => {
+    console.log('🎵 [STEM UI] Starting separation for tracks:', selectedTracks.map(t => ({ id: t.id, title: t.title })))
+    console.log('🎵 [STEM UI] Settings:', settings)
+
     setCurrentStep('processing')
     setIsProcessing(true)
 
     try {
       if (window.electronAPI) {
+        console.log('🎵 [STEM UI] ✅ ElectronAPI available')
         const newResults: StemSeparationResult[] = []
 
         // Start STEM separation for all selected tracks
         for (const track of selectedTracks) {
+          console.log(`🎵 [STEM UI] Processing track: ${track.title} (ID: ${track.id})`)
           try {
+            console.log(`🎵 [STEM UI] Calling stemStartSeparation for track ${track.id}...`)
             const response = await window.electronAPI.stemStartSeparation(track.id, settings)
+            console.log(`🎵 [STEM UI] Response for track ${track.id}:`, response)
+
             if (response.success) {
+              console.log(`🎵 [STEM UI] ✅ Success! Separation ID: ${response.separationId}`)
               newResults.push({
                 id: response.separationId,
                 trackId: track.id,
@@ -104,6 +113,7 @@ export function StemSeparationDialog({ isOpen, onClose, selectedTracks }: StemSe
                 progress: 0
               })
             } else {
+              console.error(`🎵 [STEM UI] ❌ Failed for track ${track.id}:`, response.error)
               newResults.push({
                 id: `error-${track.id}`,
                 trackId: track.id,
@@ -113,6 +123,7 @@ export function StemSeparationDialog({ isOpen, onClose, selectedTracks }: StemSe
               })
             }
           } catch (error) {
+            console.error(`🎵 [STEM UI] ❌ Exception for track ${track.id}:`, error)
             newResults.push({
               id: `error-${track.id}`,
               trackId: track.id,

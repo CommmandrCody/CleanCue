@@ -36,11 +36,34 @@ class CleanCueApp {
       this.engineInitializing = true
       console.log('Initializing real CleanCue engine...')
       try {
+        // Determine correct workers path before initializing engine
+        let workersPath: string
+        if (app.isPackaged) {
+          // In packaged app, workers are in extraResources
+          workersPath = path.join(process.resourcesPath, 'workers')
+        } else {
+          // In development, workers are in packages directory
+          workersPath = path.resolve(__dirname, '../../../packages/workers')
+        }
+
+        console.log('Workers path:', workersPath)
+
         // Import CleanCue engine using CommonJS require
         const { CleanCueEngine } = require('@cleancue/engine')
 
-        // Initialize with configuration - it will create default config automatically
+        // Initialize with custom config path to set workers path before engine creates services
         this.engine = new CleanCueEngine()
+
+        // Determine correct python path (use virtual environment if available)
+        const pythonPath = path.join(workersPath, 'venv', 'bin', 'python')
+
+        // Update config immediately before any services are initialized
+        this.engine.updateConfig({
+          workers: {
+            pythonPath: pythonPath,
+            workersPath: workersPath
+          }
+        })
 
         // Initialize the database
         await this.engine.initialize()
@@ -57,15 +80,6 @@ class CleanCueApp {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
 
-        // Update workers path to point to the correct Python workers location
-        const workersPath = path.resolve(__dirname, '../../packages/workers')
-        this.engine.updateConfig({
-          workers: {
-            pythonPath: 'python3',
-            workersPath: workersPath
-          }
-        })
-
         // Set up event forwarding to renderer process
         this.setupEventForwarding()
 
@@ -80,8 +94,39 @@ class CleanCueApp {
     }
   }
 
+  private sendLogToRenderer(level: 'info' | 'warn' | 'error' | 'debug', message: string) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('app:log', {
+        timestamp: new Date().toISOString(),
+        level,
+        message,
+        source: 'main'
+      });
+    }
+  }
+
   private setupEventForwarding() {
     if (!this.engine) return;
+
+    // Set up console logging forwarding to renderer for better debugging
+    const originalConsoleLog = console.log;
+    const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
+
+    console.log = (...args: any[]) => {
+      originalConsoleLog(...args);
+      this.sendLogToRenderer('info', args.join(' '));
+    };
+
+    console.error = (...args: any[]) => {
+      originalConsoleError(...args);
+      this.sendLogToRenderer('error', args.join(' '));
+    };
+
+    console.warn = (...args: any[]) => {
+      originalConsoleWarn(...args);
+      this.sendLogToRenderer('warn', args.join(' '));
+    };
 
     // Forward scan events to renderer
     this.engine.on('scan:started', (data: any) => {
@@ -311,12 +356,27 @@ class CleanCueApp {
       console.log('🪟 Main window ready-to-show event fired')
       this.mainWindow?.show()
       console.log('🪟 Main window show() called')
+
+      // Proactively initialize engine after window is shown to ensure
+      // library loads properly on app startup
+      this.initializeEngineProactively()
     })
 
     // Handle window closed
     this.mainWindow.on('closed', () => {
       this.mainWindow = null
     })
+  }
+
+  private async initializeEngineProactively() {
+    try {
+      console.log('🚀 Proactively initializing engine for faster library loading...')
+      await this.initializeEngine()
+      console.log('✅ Engine initialized proactively - library should load immediately')
+    } catch (error) {
+      console.warn('⚠️ Failed to initialize engine proactively:', error)
+      // Non-critical - engine will still initialize on first IPC call
+    }
   }
 
   private setupMenu() {
@@ -668,17 +728,37 @@ class CleanCueApp {
       }
     })
 
-    ipcMain.handle('stem-start-separation', async (_, trackId: string, settings: any) => {
+    ipcMain.handle('stem-start-separation', async (event, trackId: string, settings: any) => {
+      console.log(`🎵 [STEM] Starting separation for track: ${trackId}`)
+      console.log(`🎵 [STEM] Settings:`, JSON.stringify(settings, null, 2))
       try {
         await this.initializeEngine()
         if (!this.engine) {
+          console.error('🎵 [STEM] ❌ Engine not initialized')
           return { success: false, error: 'Engine not initialized' }
         }
 
-        const separationId = await this.engine.startStemSeparation(trackId, settings)
+        console.log(`🎵 [STEM] ✅ Engine ready, calling startStemSeparation...`)
+
+        // Progress callback to send updates to UI
+        const onProgress = (message: string) => {
+          console.log(`🎵 [STEM-PROGRESS] ${message}`)
+          this.sendLogToRenderer('info', `🎵 [STEM-PROGRESS] ${message}`)
+          event.sender.send('stem:installation:progress', { message })
+        }
+
+        const separationId = await this.engine.startStemSeparation(trackId, settings, onProgress)
+        console.log(`🎵 [STEM] ✅ Separation started with ID: ${separationId}`)
         return { success: true, separationId }
       } catch (error) {
-        console.error('Failed to start STEM separation:', error)
+        console.error('🎵 [STEM] ❌ Failed to start STEM separation:', error)
+        console.error('🎵 [STEM] ❌ Error details:', {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+          trackId,
+          settings
+        })
+        this.sendLogToRenderer('error', `🎵 [STEM] ❌ ${(error as Error).message}`)
         return { success: false, error: (error as Error).message }
       }
     })

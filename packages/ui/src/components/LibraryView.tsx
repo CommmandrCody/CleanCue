@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react'
-import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, Music2, List, Grid3X3 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, Music2, List, Grid3X3, ChevronRight, ChevronDown, Layers } from 'lucide-react'
 import clsx from 'clsx'
 import { ExportDialog } from './ExportDialog'
 import { StemSeparationDialog } from './StemSeparationDialog'
+
+interface StemFile {
+  type: 'vocals' | 'drums' | 'bass' | 'other' | 'piano' | 'guitar'
+  path: string
+  status: 'completed' | 'processing' | 'failed'
+}
 
 interface Track {
   id: string
@@ -17,6 +23,13 @@ interface Track {
   duration?: number
   energy?: number
   path: string
+  stemSeparation?: {
+    status: 'pending' | 'processing' | 'completed' | 'error'
+    progress?: number
+    stems?: StemFile[]
+    separationId?: string
+    errorMessage?: string
+  }
 }
 
 interface LibraryViewProps {
@@ -32,6 +45,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false)
   const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
+  const [expandedTracks, setExpandedTracks] = useState<string[]>([])
 
   useEffect(() => {
     loadTracks()
@@ -59,7 +73,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
 
         const convertedTracks = dbTracks.map((dbTrack: any) => {
           const key = dbTrack.key
-          const converted = {
+          const converted: Track = {
             id: dbTrack.id,
             title: dbTrack.title || 'Unknown Title',
             artist: dbTrack.artist || 'Unknown Artist',
@@ -71,7 +85,8 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
             camelotKey: key ? keyToCamelot(key) : undefined,
             duration: dbTrack.durationMs ? Math.floor(dbTrack.durationMs / 1000) : undefined,
             energy: dbTrack.energy,
-            path: dbTrack.path
+            path: dbTrack.path,
+            stemSeparation: dbTrack.stemSeparation || undefined
           }
 
           // Log conversion for tracks with analysis data
@@ -80,6 +95,25 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
               original: { bpm: dbTrack.bpm, key: dbTrack.key, energy: dbTrack.energy },
               converted: { bpm: converted.bpm, key: converted.key, energy: converted.energy }
             })
+          }
+
+          // Add mock stem data for testing (TODO: Remove when real stem data is implemented)
+          if (converted.id && Math.random() > 0.7) {
+            converted.stemSeparation = {
+              status: 'completed',
+              progress: 100,
+              stems: [
+                { type: 'vocals', path: '/stems/vocals.wav', status: 'completed' },
+                { type: 'drums', path: '/stems/drums.wav', status: 'completed' },
+                { type: 'bass', path: '/stems/bass.wav', status: 'completed' },
+                { type: 'other', path: '/stems/other.wav', status: 'completed' }
+              ]
+            }
+          } else if (converted.id && Math.random() > 0.8) {
+            converted.stemSeparation = {
+              status: 'processing',
+              progress: Math.floor(Math.random() * 80) + 10
+            }
           }
 
           return converted
@@ -114,6 +148,38 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     } else {
       // Not all tracks are selected, select all
       setSelectedTracks(filteredTracks.map(track => track.id))
+    }
+  }
+
+  const toggleTrackExpansion = (trackId: string) => {
+    setExpandedTracks(prev =>
+      prev.includes(trackId)
+        ? prev.filter(id => id !== trackId)
+        : [...prev, trackId]
+    )
+  }
+
+  const getStemTypeIcon = (type: string) => {
+    switch (type) {
+      case 'vocals': return '🎤'
+      case 'drums': return '🥁'
+      case 'bass': return '🎸'
+      case 'other': return '🎵'
+      case 'piano': return '🎹'
+      case 'guitar': return '🎸'
+      default: return '🎶'
+    }
+  }
+
+  const getStemTypeColor = (type: string) => {
+    switch (type) {
+      case 'vocals': return 'text-blue-400'
+      case 'drums': return 'text-red-400'
+      case 'bass': return 'text-yellow-400'
+      case 'other': return 'text-green-400'
+      case 'piano': return 'text-purple-400'
+      case 'guitar': return 'text-orange-400'
+      default: return 'text-gray-400'
     }
   }
 
@@ -389,7 +455,8 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
           <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300">
             <div className="col-span-1">✓</div>
             <div className="col-span-1">▶</div>
-            <div className="col-span-5">Track</div>
+            <div className="col-span-1"></div>
+            <div className="col-span-4">Track</div>
             <div className="col-span-2">Artist</div>
             <div className="col-span-1">BPM</div>
             <div className="col-span-1">Key</div>
@@ -403,65 +470,142 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                 <p className="text-sm">Loading tracks...</p>
               </div>
             ) : filteredTracks.map((track) => (
-              <div
-                key={track.id}
-                className={clsx(
-                  'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm',
-                  selectedTracks.includes(track.id) && 'bg-primary-900/20'
-                )}
-              >
-                <div className="col-span-1 flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedTracks.includes(track.id)}
-                    onChange={() => toggleTrackSelection(track.id)}
-                    className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500 w-3 h-3"
-                  />
-                </div>
+              <React.Fragment key={track.id}>
+                {/* Main Track Row */}
+                <div
+                  className={clsx(
+                    'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm',
+                    selectedTracks.includes(track.id) && 'bg-primary-900/20'
+                  )}
+                >
+                  <div className="col-span-1 flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedTracks.includes(track.id)}
+                      onChange={() => toggleTrackSelection(track.id)}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500 w-3 h-3"
+                    />
+                  </div>
 
-                <div className="col-span-1 flex items-center">
-                  <button
-                    onClick={() => handlePlayTrack(track)}
-                    className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
-                    title="Play track"
-                  >
-                    <Play className="h-3 w-3" />
-                  </button>
-                </div>
+                  <div className="col-span-1 flex items-center">
+                    <button
+                      onClick={() => handlePlayTrack(track)}
+                      className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
+                      title="Play track"
+                    >
+                      <Play className="h-3 w-3" />
+                    </button>
+                  </div>
 
-                <div className="col-span-5 flex items-center min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate text-sm">{track.title}</div>
-                    <div className="text-xs text-gray-400 truncate">
-                      {track.album && `${track.album} • `}{track.genre || 'Unknown Genre'}
+                  <div className="col-span-1 flex items-center">
+                    {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 ? (
+                      <button
+                        onClick={() => toggleTrackExpansion(track.id)}
+                        className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
+                        title={expandedTracks.includes(track.id) ? "Hide stems" : "Show stems"}
+                      >
+                        {expandedTracks.includes(track.id) ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                      </button>
+                    ) : track.stemSeparation && track.stemSeparation.status === 'processing' ? (
+                      <div className="flex items-center">
+                        <Layers className="h-3 w-3 text-yellow-400 animate-pulse" />
+                      </div>
+                    ) : track.stemSeparation && track.stemSeparation.status === 'pending' ? (
+                      <div className="flex items-center">
+                        <Layers className="h-3 w-3 text-gray-500" />
+                      </div>
+                    ) : (
+                      <div className="w-3"></div>
+                    )}
+                  </div>
+
+                  <div className="col-span-4 flex items-center min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate text-sm flex items-center">
+                        {track.title}
+                        {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 && (
+                          <span className="ml-2 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
+                            STEMS
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        {track.album && `${track.album} • `}{track.genre || 'Unknown Genre'}
+                        {track.stemSeparation && track.stemSeparation.status === 'processing' && (
+                          <span className="ml-2 text-yellow-400">
+                            • Processing stems {track.stemSeparation.progress}%
+                          </span>
+                        )}
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="col-span-2 flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
+
+                  <div className="col-span-1 flex items-center">
+                    {track.bpm && (
+                      <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
+                    )}
+                  </div>
+
+                  <div className="col-span-1 flex items-center">
+                    {track.camelotKey && (
+                      <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
+                        {track.camelotKey}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="col-span-1 flex items-center">
+                    {track.energy ? (
+                      <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
+                    ) : (
+                      <span className="text-gray-500 text-xs">-</span>
+                    )}
                   </div>
                 </div>
 
-                <div className="col-span-2 flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
-
-                <div className="col-span-1 flex items-center">
-                  {track.bpm && (
-                    <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
-                  )}
-                </div>
-
-                <div className="col-span-1 flex items-center">
-                  {track.camelotKey && (
-                    <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
-                      {track.camelotKey}
-                    </span>
-                  )}
-                </div>
-
-                <div className="col-span-1 flex items-center">
-                  {track.energy ? (
-                    <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
-                  ) : (
-                    <span className="text-gray-500 text-xs">-</span>
-                  )}
-                </div>
-              </div>
+                {/* Expanded Stems Section */}
+                {expandedTracks.includes(track.id) && track.stemSeparation && track.stemSeparation.stems && (
+                  <div className="bg-gray-900 border-l-4 border-purple-500">
+                    <div className="px-4 py-3">
+                      <div className="text-xs text-gray-400 mb-2 flex items-center">
+                        <Layers className="h-3 w-3 mr-1" />
+                        Separated Stems ({track.stemSeparation.stems.length})
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {track.stemSeparation.stems.map((stem, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center space-x-2 p-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors cursor-pointer"
+                            title={`Play ${stem.type} stem`}
+                          >
+                            <span className="text-sm">{getStemTypeIcon(stem.type)}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className={clsx('text-xs font-medium capitalize', getStemTypeColor(stem.type))}>
+                                {stem.type}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {stem.status === 'completed' ? 'Ready' : stem.status}
+                              </div>
+                            </div>
+                            <button
+                              className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
+                              title={`Play ${stem.type} stem`}
+                            >
+                              <Play className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
             ))}
           </div>
 

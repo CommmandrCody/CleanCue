@@ -11,6 +11,9 @@ import { LibraryImport } from './components/LibraryImport'
 import { YouTubeDownloader } from './components/YouTubeDownloader'
 import { AudioPlayer } from './components/AudioPlayer'
 import { LogViewer } from './components/LogViewer'
+import { StemQueueDialog } from './components/StemQueueDialog'
+import { YouTubeDownloadProvider } from './contexts/YouTubeDownloadContext'
+import { StemSeparationProvider } from './contexts/StemSeparationContext'
 
 type ViewType = 'library' | 'health' | 'duplicates' | 'analysis'
 
@@ -23,12 +26,13 @@ interface Track {
   duration?: number
 }
 
-function App() {
+function AppContent() {
   const [currentView, setCurrentView] = useState<ViewType>('library')
   const [showScanDialog, setShowScanDialog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showYouTubeDownloader, setShowYouTubeDownloader] = useState(false)
+  const [showStemQueue, setShowStemQueue] = useState(false)
   const [showLogViewer, setShowLogViewer] = useState(true)
   const [logViewerHeight] = useState(200)
   const [showHelp, setShowHelp] = useState(false)
@@ -132,13 +136,14 @@ function App() {
         else if (showSettings) setShowSettings(false)
         else if (showImport) setShowImport(false)
         else if (showYouTubeDownloader) setShowYouTubeDownloader(false)
+        else if (showStemQueue) setShowStemQueue(false)
         else if (showPlayer) handleClosePlayer()
       }
     }
 
     window.addEventListener('keydown', handleKeyboard)
     return () => window.removeEventListener('keydown', handleKeyboard)
-  }, [showLogViewer, showScanDialog, showSettings, showImport, showYouTubeDownloader, showPlayer, showHelp])
+  }, [showLogViewer, showScanDialog, showSettings, showImport, showYouTubeDownloader, showStemQueue, showPlayer, showHelp])
 
 
   const renderView = () => {
@@ -174,6 +179,7 @@ function App() {
         onSettings={() => setShowSettings(true)}
         onImport={() => setShowImport(true)}
         onYouTubeDownloader={() => setShowYouTubeDownloader(true)}
+        onStemQueue={() => setShowStemQueue(true)}
         showLogViewer={showLogViewer}
         onToggleLogViewer={() => setShowLogViewer(!showLogViewer)}
       />
@@ -220,6 +226,13 @@ function App() {
         <YouTubeDownloader
           isOpen={showYouTubeDownloader}
           onClose={() => setShowYouTubeDownloader(false)}
+        />
+      )}
+
+      {showStemQueue && (
+        <StemQueueDialog
+          isOpen={showStemQueue}
+          onClose={() => setShowStemQueue(false)}
         />
       )}
 
@@ -321,6 +334,16 @@ function App() {
       )}
 
     </div>
+  )
+}
+
+function App() {
+  return (
+    <YouTubeDownloadProvider>
+      <StemSeparationProvider>
+        <AppContent />
+      </StemSeparationProvider>
+    </YouTubeDownloadProvider>
   )
 }
 

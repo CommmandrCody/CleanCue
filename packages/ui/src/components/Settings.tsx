@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2, FileText } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2, FileText, Layers } from 'lucide-react'
 import { LogViewer } from './LogViewer'
 
 interface SettingsProps {
@@ -34,6 +34,19 @@ interface AppSettings {
     analyzeOnImport: boolean
     writeTagsToFiles: boolean
     bpmRange: { min: number; max: number }
+  }
+  stems: {
+    enabled: boolean
+    outputPath: string
+    tempPath: string
+    defaultModel: 'htdemucs' | 'htdemucs_ft' | 'htdemucs_6s' | 'mdx_extra'
+    defaultQuality: 'low' | 'medium' | 'high'
+    defaultFormat: 'wav' | 'flac' | 'mp3'
+    autoSeparateOnImport: boolean
+    segments: number
+    overlap: number
+    clipMode: 'rescale' | 'clamp'
+    maxConcurrentJobs: number
   }
   ui: {
     theme: 'dark' | 'light' | 'auto'
@@ -76,6 +89,19 @@ const defaultSettings: AppSettings = {
     writeTagsToFiles: true,
     bpmRange: { min: 60, max: 200 }
   },
+  stems: {
+    enabled: true,
+    outputPath: '~/.cleancue/stems',
+    tempPath: '~/.cleancue/temp',
+    defaultModel: 'htdemucs',
+    defaultQuality: 'medium',
+    defaultFormat: 'wav',
+    autoSeparateOnImport: false,
+    segments: 4,
+    overlap: 0.25,
+    clipMode: 'rescale',
+    maxConcurrentJobs: 1
+  },
   ui: {
     theme: 'dark',
     showAlbumArt: true,
@@ -91,7 +117,7 @@ const defaultSettings: AppSettings = {
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
-  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'ui' | 'logs'>('workflow')
+  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'stems' | 'ui' | 'logs'>('workflow')
 
   if (!isOpen) return null
 
@@ -128,6 +154,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const tabs = [
     { id: 'workflow', label: 'DJ Workflow', icon: Workflow },
     { id: 'library', label: 'Library', icon: Music },
+    { id: 'stems', label: 'STEM Separation', icon: Layers },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'analysis', label: 'Analysis', icon: SettingsIcon },
     { id: 'ui', label: 'Interface', icon: Folder },
@@ -470,6 +497,220 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'stems' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-medium mb-4">STEM Separation Settings</h3>
+                <div className="bg-gray-700 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Layers className="h-5 w-5 text-primary-400" />
+                    <span className="font-medium text-primary-400">AI-Powered Audio Source Separation</span>
+                  </div>
+                  <p className="text-sm text-gray-300">Separate tracks into individual stems (vocals, drums, bass, other) using advanced machine learning models.</p>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Enable/Disable STEM Separation */}
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.stems.enabled}
+                      onChange={(e) => updateSettings('stems', { enabled: e.target.checked })}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                    />
+                    <div className="flex flex-col">
+                      <span>Enable STEM separation</span>
+                      <span className="text-xs text-gray-400">Unlock advanced remix and DJ functionality</span>
+                    </div>
+                  </label>
+
+                  {settings.stems.enabled && (
+                    <>
+                      {/* Output Paths */}
+                      <div className="space-y-4">
+                        <h4 className="text-md font-medium">Storage Locations</h4>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Stems Output Directory</label>
+                          <div className="flex space-x-2">
+                            <input
+                              type="text"
+                              value={settings.stems.outputPath}
+                              onChange={(e) => updateSettings('stems', { outputPath: e.target.value })}
+                              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="~/.cleancue/stems"
+                            />
+                            <button className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors">
+                              Browse
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">Where separated stem files will be stored</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Temporary Processing Directory</label>
+                          <div className="flex space-x-2">
+                            <input
+                              type="text"
+                              value={settings.stems.tempPath}
+                              onChange={(e) => updateSettings('stems', { tempPath: e.target.value })}
+                              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              placeholder="~/.cleancue/temp"
+                            />
+                            <button className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors">
+                              Browse
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">Temporary files during processing (can be cleaned up)</p>
+                        </div>
+                      </div>
+
+                      {/* Default Model Settings */}
+                      <div className="space-y-4">
+                        <h4 className="text-md font-medium">Default Processing Settings</h4>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-2">AI Model</label>
+                          <select
+                            value={settings.stems.defaultModel}
+                            onChange={(e) => updateSettings('stems', { defaultModel: e.target.value })}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="htdemucs">HTDemucs - Best overall quality</option>
+                            <option value="htdemucs_ft">HTDemucs Fine-tuned - Enhanced for specific genres</option>
+                            <option value="htdemucs_6s">HTDemucs 6-source - Separates guitar and piano too</option>
+                            <option value="mdx_extra">MDX Extra - Faster processing</option>
+                          </select>
+                          <p className="text-xs text-gray-400 mt-1">Different models offer various trade-offs between quality and speed</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Quality</label>
+                            <select
+                              value={settings.stems.defaultQuality}
+                              onChange={(e) => updateSettings('stems', { defaultQuality: e.target.value })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="low">Low - Fastest processing</option>
+                              <option value="medium">Medium - Balanced quality/speed</option>
+                              <option value="high">High - Best quality</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Output Format</label>
+                            <select
+                              value={settings.stems.defaultFormat}
+                              onChange={(e) => updateSettings('stems', { defaultFormat: e.target.value })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="wav">WAV - Uncompressed</option>
+                              <option value="flac">FLAC - Lossless compression</option>
+                              <option value="mp3">MP3 - Smaller files</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Advanced Settings */}
+                      <div className="space-y-4">
+                        <h4 className="text-md font-medium">Advanced Settings</h4>
+
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Segments</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="16"
+                              value={settings.stems.segments}
+                              onChange={(e) => updateSettings('stems', { segments: parseInt(e.target.value) })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Higher = less memory usage</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Overlap</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={settings.stems.overlap}
+                              onChange={(e) => updateSettings('stems', { overlap: parseFloat(e.target.value) })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Segment overlap (0.25 recommended)</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Clip Mode</label>
+                            <select
+                              value={settings.stems.clipMode}
+                              onChange={(e) => updateSettings('stems', { clipMode: e.target.value })}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="rescale">Rescale - Prevent clipping</option>
+                              <option value="clamp">Clamp - Hard limit</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Workflow Settings */}
+                      <div className="space-y-4">
+                        <h4 className="text-md font-medium">Workflow Integration</h4>
+
+                        <label className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            checked={settings.stems.autoSeparateOnImport}
+                            onChange={(e) => updateSettings('stems', { autoSeparateOnImport: e.target.checked })}
+                            className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                          />
+                          <div className="flex flex-col">
+                            <span>Auto-separate stems on import</span>
+                            <span className="text-xs text-gray-400">Automatically create stems for new tracks</span>
+                          </div>
+                        </label>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Maximum Concurrent Jobs: {settings.stems.maxConcurrentJobs}
+                          </label>
+                          <input
+                            type="range"
+                            min="1"
+                            max="4"
+                            value={settings.stems.maxConcurrentJobs}
+                            onChange={(e) => updateSettings('stems', { maxConcurrentJobs: parseInt(e.target.value) })}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-gray-400 mt-1">
+                            <span>1 (Conservative)</span>
+                            <span>4 (Maximum)</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-2">Higher values use more CPU/GPU but process multiple tracks simultaneously</p>
+                        </div>
+                      </div>
+
+                      {/* Performance Info */}
+                      <div className="bg-blue-900/20 border border-blue-600/30 rounded-lg p-4">
+                        <h4 className="text-md font-medium text-blue-300 mb-3">🎛️ Performance Notes</h4>
+                        <div className="text-sm text-gray-300 space-y-2">
+                          <p>• STEM separation is computationally intensive and may take several minutes per track</p>
+                          <p>• HTDemucs models provide the best quality but require more processing time</p>
+                          <p>• Consider your system's capabilities when adjusting concurrent jobs</p>
+                          <p>• Temp directory should have sufficient free space (2-3x track size)</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

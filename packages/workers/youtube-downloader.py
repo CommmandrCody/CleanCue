@@ -53,7 +53,7 @@ class YouTubeDownloader:
         logger.error("yt-dlp is not installed or not available in any expected location")
         return False
 
-    def get_video_info(self, url: str) -> Dict[str, Any]:
+    def get_video_info(self, url: str, use_cookies: bool = True) -> Dict[str, Any]:
         """Get information about a YouTube video without downloading"""
         try:
             cmd = [
@@ -62,6 +62,20 @@ class YouTubeDownloader:
                 '--no-download',
                 url
             ]
+
+            # Add cookie support for authenticated access
+            if use_cookies:
+                browsers = ['chrome', 'firefox', 'safari', 'edge']
+                for browser in browsers:
+                    try:
+                        test_cmd = [self.ytdlp_path or 'yt-dlp', '--cookies-from-browser', browser, '--simulate', 'https://youtube.com']
+                        result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0:
+                            cmd.extend(['--cookies-from-browser', browser])
+                            logger.info(f"Using cookies from {browser} for video info")
+                            break
+                    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                        continue
 
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
@@ -101,7 +115,7 @@ class YouTubeDownloader:
         output_path = os.path.join(self.output_dir, output_template)
 
         cmd = [
-            'yt-dlp',
+            self.ytdlp_path or 'yt-dlp',
             '--extract-audio',
             '--audio-format', format_type,
             '--audio-quality', str(quality),
@@ -109,8 +123,26 @@ class YouTubeDownloader:
             '--no-playlist' if not options.get('download_playlist', False) else '--yes-playlist',
             '--ignore-errors',
             '--no-warnings' if not options.get('verbose', False) else '--verbose',
+            '--newline',  # Output progress as new lines for easier parsing
+            '--progress',  # Show progress even in quiet mode
             url
         ]
+
+        # Add cookie support for authenticated access
+        if options.get('use_cookies', True):
+            # Try to load cookies from common browsers
+            browsers = ['chrome', 'firefox', 'safari', 'edge']
+            for browser in browsers:
+                try:
+                    # Test if browser cookies are accessible
+                    test_cmd = [self.ytdlp_path or 'yt-dlp', '--cookies-from-browser', browser, '--simulate', 'https://youtube.com']
+                    result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        cmd.extend(['--cookies-from-browser', browser])
+                        logger.info(f"Using cookies from {browser}")
+                        break
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                    continue
 
         # Add additional options
         if options.get('embed_metadata', True):
@@ -120,19 +152,24 @@ class YouTubeDownloader:
             cmd.append('--embed-thumbnail')
 
         try:
-            # Run download
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            # Run download with real-time output capture
+            if options.get('stream_progress', False):
+                # Stream progress for real-time updates
+                return self._run_download_with_progress(cmd, options)
+            else:
+                # Standard download
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-            # Parse output to find downloaded files
-            downloaded_files = self._parse_download_output(result.stdout)
+                # Parse output to find downloaded files
+                downloaded_files = self._parse_download_output(result.stdout)
 
-            return {
-                'success': True,
-                'downloaded_files': downloaded_files,
-                'output_dir': self.output_dir,
-                'stdout': result.stdout,
-                'stderr': result.stderr
-            }
+                return {
+                    'success': True,
+                    'downloaded_files': downloaded_files,
+                    'output_dir': self.output_dir,
+                    'stdout': result.stdout,
+                    'stderr': result.stderr
+                }
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Download failed: {e.stderr}")
@@ -162,7 +199,87 @@ class YouTubeDownloader:
 
         return downloaded_files
 
-    def search_youtube(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
+    def _run_download_with_progress(self, cmd: List[str], options: Dict[str, Any]) -> Dict[str, Any]:
+        """Run download with real-time progress reporting"""
+        import time
+        import json
+        import re
+
+        downloaded_files = []
+        progress_data = {}
+
+        try:
+            # Start the process
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                universal_newlines=True,
+                bufsize=1
+            )
+
+            log_lines = []
+
+            # Read output line by line
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+
+                if line:
+                    line = line.strip()
+                    log_lines.append(line)
+
+                    # Parse progress information
+                    if '[download]' in line:
+                        # Extract percentage and speed
+                        percentage_match = re.search(r'(\d+\.?\d*)%', line)
+                        speed_match = re.search(r'at\s+(\d+\.?\d*\w+/s)', line)
+                        eta_match = re.search(r'ETA\s+(\d+:\d+)', line)
+
+                        if percentage_match:
+                            progress_data['percentage'] = float(percentage_match.group(1))
+                        if speed_match:
+                            progress_data['speed'] = speed_match.group(1)
+                        if eta_match:
+                            progress_data['eta'] = eta_match.group(1)
+
+                        # Print progress for immediate feedback
+                        print(f"PROGRESS: {json.dumps(progress_data)}")
+
+                    # Parse downloaded files
+                    if '[download] Destination:' in line or '[ffmpeg] Destination:' in line:
+                        match = re.search(r'Destination: (.+)', line)
+                        if match:
+                            downloaded_files.append(match.group(1))
+
+            # Wait for process to complete
+            return_code = process.wait()
+
+            if return_code == 0:
+                return {
+                    'success': True,
+                    'downloaded_files': downloaded_files,
+                    'output_dir': self.output_dir,
+                    'progress': progress_data,
+                    'log': log_lines
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f"Process failed with return code {return_code}",
+                    'log': log_lines
+                }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Download failed: {str(e)}",
+                'log': log_lines if 'log_lines' in locals() else []
+            }
+
+    def search_youtube(self, query: str, max_results: int = 10, use_cookies: bool = True) -> List[Dict[str, Any]]:
         """Search YouTube and return video information"""
         try:
             cmd = [
@@ -172,6 +289,20 @@ class YouTubeDownloader:
                 '--flat-playlist',
                 f'ytsearch{max_results}:{query}'
             ]
+
+            # Add cookie support for authenticated access
+            if use_cookies:
+                browsers = ['chrome', 'firefox', 'safari', 'edge']
+                for browser in browsers:
+                    try:
+                        test_cmd = [self.ytdlp_path or 'yt-dlp', '--cookies-from-browser', browser, '--simulate', 'https://youtube.com']
+                        result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0:
+                            cmd.extend(['--cookies-from-browser', browser])
+                            logger.info(f"Using cookies from {browser} for search")
+                            break
+                    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                        continue
 
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
