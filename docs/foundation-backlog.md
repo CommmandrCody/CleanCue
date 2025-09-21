@@ -4,6 +4,15 @@
 
 The core principle: Build a rock-solid foundation for music library management before tackling complex export formats. DJs need to trust CleanCue as their **source of truth** for music data.
 
+## 🚀 Recent Quick Wins (v0.2.3)
+
+**High Impact, Low Effort implementations completed:**
+- ✅ **Camelot Wheel Toggle** - DJs can switch between musical keys (Am, C#) and Camelot notation (8A, 12B) with one click
+- ✅ **BPM Validation** - Intelligent tempo correction prevents 63 BPM house tracks and 240 BPM hip-hop errors
+- ✅ **Settings Integration** - Key display mode and BPM ranges configurable in UI
+
+*Combined effort: ~6 hours | Impact: Immediate DJ credibility and trust*
+
 ---
 
 ## 🎯 Phase 0: Advanced Cue Detection & Beatgrid Analysis (PRIORITY)
@@ -13,7 +22,7 @@ The core principle: Build a rock-solid foundation for music library management b
 ### Beatgrid Precision
 - [ ] Multi-algorithm beat detection (librosa, aubio, essentia)
 - [ ] Variable tempo handling (live recordings, DJ mixes)
-- [ ] Beat confidence scoring and validation
+- [x] **Beat confidence scoring and validation** ✅ *v0.2.3 - Added intelligent BPM validation with half/double-time correction*
 - [ ] Manual beatgrid adjustment tools
 - [ ] Beatgrid drift correction for long tracks
 - [ ] Sub-beat precision (16th notes, 32nd notes)
@@ -118,8 +127,8 @@ The core principle: Build a rock-solid foundation for music library management b
 ### Advanced BPM Detection
 - [ ] Multi-algorithm BPM detection with confidence scoring
 - [ ] Handle variable tempo tracks (live recordings, DJ mixes)
-- [ ] BPM range validation (reject impossible values)
-- [ ] Half/double tempo detection and correction
+- [x] **BPM range validation (reject impossible values)** ✅ *v0.2.3 - Configurable min/max BPM validation*
+- [x] **Half/double tempo detection and correction** ✅ *v0.2.3 - Intelligent tempo correction with notes*
 - [ ] User feedback loop for BPM accuracy improvements
 
 ### Enhanced Key Detection
@@ -148,8 +157,8 @@ The core principle: Build a rock-solid foundation for music library management b
 
 ### Visual Key System
 - [ ] Color-coded key visualization (traditional color wheel)
-- [ ] Camelot wheel integration with harmonic mixing
-- [ ] Toggle between musical keys (Am, C#) and Camelot codes (8A, 12B)
+- [x] **Camelot wheel integration with harmonic mixing** ✅ *v0.2.3 - Full Camelot notation support*
+- [x] **Toggle between musical keys (Am, C#) and Camelot codes (8A, 12B)** ✅ *v0.2.3 - UI toggle in LibraryView*
 - [ ] Key compatibility indicators in track listings
 - [ ] Harmonic progression suggestions
 

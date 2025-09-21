@@ -58,6 +58,7 @@ interface AppSettings {
     showTooltips: boolean
     animateTransitions: boolean
     autoColorTheme: boolean
+    keyDisplayMode: 'musical' | 'camelot'
   }
 }
 
@@ -111,7 +112,8 @@ const defaultSettings: AppSettings = {
     gridCols: 'auto',
     showTooltips: true,
     animateTransitions: true,
-    autoColorTheme: false
+    autoColorTheme: false,
+    keyDisplayMode: 'camelot'
   }
 }
 
@@ -848,6 +850,27 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   <p className="text-sm text-gray-300 mb-3">
                     These settings optimize CleanCue for professional DJ use with better track management and faster workflow.
                   </p>
+
+                  <div className="space-y-3 mb-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-blue-300">Key Display Mode</label>
+                      <select
+                        value={settings.ui.keyDisplayMode}
+                        onChange={(e) => updateSettings('ui', { keyDisplayMode: e.target.value as 'musical' | 'camelot' })}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="musical">Musical Keys (Am, C#, Dm)</option>
+                        <option value="camelot">Camelot Wheel (8A, 12B, 7A)</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {settings.ui.keyDisplayMode === 'camelot'
+                          ? 'Perfect for harmonic mixing - adjacent numbers mix perfectly'
+                          : 'Traditional musical notation - shows actual key signatures'
+                        }
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="text-xs text-gray-400">
                     • Compact view shows more tracks per screen<br/>
                     • BPM and key info prominently displayed<br/>

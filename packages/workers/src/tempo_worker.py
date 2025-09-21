@@ -19,11 +19,13 @@ except ImportError:
 
 def analyze_tempo(audio_path: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze tempo/BPM of an audio file using librosa."""
-    
+
     # Default parameters
     hop_length = parameters.get('hop_length', 512)
     start_bpm = parameters.get('start_bpm', 120)
     std_bpm = parameters.get('std_bpm', 4.0)
+    min_bpm = parameters.get('minBpm', 60)
+    max_bpm = parameters.get('maxBpm', 200)
     
     try:
         print("PROGRESS:10")
@@ -55,11 +57,41 @@ def analyze_tempo(audio_path: str, parameters: Dict[str, Any]) -> Dict[str, Any]
         onset_strength_std = np.std(onset_envelope)
         confidence = min(1.0, onset_strength_mean / (onset_strength_std + 1e-6))
         
+        # Extract and validate tempo
+        detected_tempo = float(tempo[0]) if hasattr(tempo, '__len__') else float(tempo)
+
+        # BPM validation and correction
+        validated_tempo = detected_tempo
+        validation_notes = []
+
+        # Check for impossible BPM values
+        if detected_tempo < min_bpm:
+            # Likely detected half-time, try doubling
+            if detected_tempo * 2 <= max_bpm:
+                validated_tempo = detected_tempo * 2
+                validation_notes.append(f"Doubled from {detected_tempo:.1f} (likely half-time)")
+            else:
+                validation_notes.append(f"BPM {detected_tempo:.1f} below minimum {min_bpm}")
+                confidence *= 0.5  # Reduce confidence for questionable values
+
+        elif detected_tempo > max_bpm:
+            # Likely detected double-time, try halving
+            if detected_tempo / 2 >= min_bpm:
+                validated_tempo = detected_tempo / 2
+                validation_notes.append(f"Halved from {detected_tempo:.1f} (likely double-time)")
+            else:
+                validation_notes.append(f"BPM {detected_tempo:.1f} above maximum {max_bpm}")
+                confidence *= 0.5  # Reduce confidence for questionable values
+
         print("PROGRESS:100")
-        
+
         return {
-            'tempo': float(tempo[0]) if hasattr(tempo, '__len__') else float(tempo),
+            'tempo': validated_tempo,
+            'original_tempo': detected_tempo,
             'confidence': float(confidence),
+            'validation_notes': validation_notes,
+            'is_validated': detected_tempo != validated_tempo,
+            'bpm_range': {'min': min_bpm, 'max': max_bpm},
             'beats_count': len(beats),
             'first_beat_time': float(beat_times[0]) if len(beat_times) > 0 else 0.0,
             'beat_times': [float(t) for t in beat_times[:50]],  # First 50 beats

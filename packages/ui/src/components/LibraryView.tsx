@@ -46,6 +46,10 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false)
   const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
   const [expandedTracks, setExpandedTracks] = useState<string[]>([])
+  const [keyDisplayMode, setKeyDisplayMode] = useState<'musical' | 'camelot'>(() => {
+    // Load from localStorage or default to camelot
+    return (localStorage.getItem('keyDisplayMode') as 'musical' | 'camelot') || 'camelot'
+  })
 
   useEffect(() => {
     loadTracks()
@@ -286,6 +290,12 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     }
   }
 
+  const toggleKeyDisplayMode = () => {
+    const newMode = keyDisplayMode === 'musical' ? 'camelot' : 'musical'
+    setKeyDisplayMode(newMode)
+    localStorage.setItem('keyDisplayMode', newMode)
+  }
+
   const handleAnalyzeClick = async () => {
     if (selectedTracks.length === 0) return
 
@@ -330,6 +340,17 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Key Display Mode Toggle */}
+          <div className="flex bg-gray-700 rounded-md p-1">
+            <button
+              onClick={toggleKeyDisplayMode}
+              className="px-3 py-1 rounded text-xs font-medium transition-colors bg-purple-600 hover:bg-purple-700 text-white"
+              title={`Switch to ${keyDisplayMode === 'musical' ? 'Camelot' : 'Musical'} keys`}
+            >
+              {keyDisplayMode === 'musical' ? '♭♯' : '8A'}
+            </button>
+          </div>
+
           {/* View Mode Toggle */}
           <div className="flex bg-gray-700 rounded-md p-1">
             <button
@@ -553,9 +574,9 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                   </div>
 
                   <div className="col-span-1 flex items-center">
-                    {track.camelotKey && (
+                    {(keyDisplayMode === 'camelot' ? track.camelotKey : track.key) && (
                       <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
-                        {track.camelotKey}
+                        {keyDisplayMode === 'camelot' ? track.camelotKey : track.key}
                       </span>
                     )}
                   </div>
@@ -691,15 +712,12 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                 </div>
 
                 <div className="col-span-1">
-                  {track.key && (
+                  {(keyDisplayMode === 'camelot' ? track.camelotKey : track.key) && (
                     <div className="flex items-center space-x-1">
                       <Key className="h-3 w-3 text-purple-400" />
-                      <span className="text-xs font-medium">{track.key}</span>
-                    </div>
-                  )}
-                  {track.camelotKey && (
-                    <div className="mt-1 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300 text-center">
-                      {track.camelotKey}
+                      <span className="text-xs font-medium">
+                        {keyDisplayMode === 'camelot' ? track.camelotKey : track.key}
+                      </span>
                     </div>
                   )}
                 </div>
