@@ -1,0 +1,9 @@
+# Additional requirements for STEM separation
+# These will be installed dynamically when STEM features are first used
+
+demucs>=4.0.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Advanced analysis (optional)
+essentia-tensorflow>=2.1b6.dev1110

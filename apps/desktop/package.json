@@ -55,7 +55,8 @@
       "**/node_modules/file-uri-to-path/**/*",
       "**/node_modules/debug/**/*",
       "**/node_modules/ms/**/*",
-      "**/node_modules/music-metadata/**/*"
+      "**/node_modules/music-metadata/**/*",
+      "**/node_modules/@cleancue/workers/**/*"
     ],
     "extraResources": [
       {
@@ -64,7 +65,33 @@
         "filter": [
           "**/*",
           "!**/*.pyc",
-          "!**/__pycache__"
+          "!**/__pycache__",
+          "!venv/lib/python*/site-packages/pip*/**",
+          "!venv/lib/python*/site-packages/setuptools*/**",
+          "!venv/lib/python*/site-packages/wheel*/**",
+          "!venv/lib/python*/site-packages/pytest*/**",
+          "!venv/lib/python*/site-packages/_pytest*/**",
+          "!venv/lib/python*/site-packages/coverage*/**",
+          "!venv/lib/python*/site-packages/distutils*/**",
+          "!venv/lib/python*/site-packages/pkg_resources*/**",
+          "!venv/share/**",
+          "!venv/include/**",
+          "!venv/lib/python*/site-packages/*/tests/**",
+          "!venv/lib/python*/site-packages/*/test/**",
+          "!venv/lib/python*/site-packages/*/__pycache__/**",
+          "!venv/lib/python*/site-packages/*.egg-info/**",
+          "!venv/lib/python*/site-packages/*.dist-info/RECORD",
+          "!venv/lib/python*/site-packages/*.dist-info/INSTALLER",
+          "!venv/lib/python*/site-packages/*.dist-info/direct_url.json",
+          "!venv/lib/python*/site-packages/torch/include/**",
+          "!venv/lib/python*/site-packages/torch/bin/**",
+          "!venv/lib/python*/site-packages/torch/testing/**",
+          "!venv/lib/python*/site-packages/torch/distributed/**",
+          "!venv/lib/python*/site-packages/torch/onnx/**",
+          "!venv/lib/python*/site-packages/sklearn/datasets/**",
+          "!venv/lib/python*/site-packages/numba/tests/**",
+          "!venv/lib/python*/site-packages/scipy/datasets/**",
+          "!venv/lib/python*/site-packages/librosa/example_data/**"
         ]
       }
     ],
