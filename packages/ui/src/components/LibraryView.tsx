@@ -102,24 +102,6 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
             })
           }
 
-          // Add mock stem data for testing (TODO: Remove when real stem data is implemented)
-          if (converted.id && Math.random() > 0.7) {
-            converted.stemSeparation = {
-              status: 'completed',
-              progress: 100,
-              stems: [
-                { type: 'vocals', path: '/stems/vocals.wav', status: 'completed' },
-                { type: 'drums', path: '/stems/drums.wav', status: 'completed' },
-                { type: 'bass', path: '/stems/bass.wav', status: 'completed' },
-                { type: 'other', path: '/stems/other.wav', status: 'completed' }
-              ]
-            }
-          } else if (converted.id && Math.random() > 0.8) {
-            converted.stemSeparation = {
-              status: 'processing',
-              progress: Math.floor(Math.random() * 80) + 10
-            }
-          }
 
           return converted
         })

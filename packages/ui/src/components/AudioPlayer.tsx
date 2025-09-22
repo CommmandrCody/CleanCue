@@ -196,7 +196,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
 
             {/* Volume and Controls */}
             <div className="flex items-center space-x-2">
-              {/* Volume */
+              {/* Volume */}
               <button
                 onClick={toggleMute}
                 className="p-2 text-gray-400 hover:text-white transition-colors"
