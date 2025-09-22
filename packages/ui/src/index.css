@@ -27,5 +27,5 @@ code {
 
 /* macOS window controls padding - space for traffic light buttons */
 .mac-window-controls-padding {
-  padding-left: 80px; /* Space for red, yellow, green buttons on macOS */
+  padding-left: 100px !important; /* Space for red, yellow, green buttons on macOS */
 }
