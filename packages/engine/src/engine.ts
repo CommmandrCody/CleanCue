@@ -6,6 +6,7 @@ import { ConfigManager } from './config';
 import { USBExporter } from './usb-exporter';
 import { StemSeparationService, StemSeparationSettings, StemSeparationResult } from './stem-separation-service';
 import { YouTubeDownloaderService, YouTubeDownloadOptions, YouTubeVideoInfo, YouTubeDownloadResult, YouTubeSearchResult } from './youtube-downloader-service';
+import { HealthEngine } from './health-engine';
 import type {
   Track, Analysis, ScanResult, HealthReport, ExportOptions,
   ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
@@ -22,6 +23,7 @@ export class CleanCueEngine {
   private usbExporter: USBExporter;
   private stemSeparationService: StemSeparationService;
   private youtubeDownloader: YouTubeDownloaderService;
+  private healthEngine: HealthEngine;
 
   constructor(configPath?: string) {
     this.config = new ConfigManager(configPath);
@@ -35,6 +37,7 @@ export class CleanCueEngine {
       this.config.get('workers.workersPath'),
       this.config.get('workers.pythonPath')
     );
+    this.healthEngine = new HealthEngine(this.db, this.events);
 
     this.setupEventHandlers();
   }
@@ -380,31 +383,45 @@ export class CleanCueEngine {
     });
 
     let completed = 0;
-    const maxConcurrent = this.config.get('workers.maxConcurrentJobs') || 2;
+    const failed = 0;
+    const maxConcurrent = this.config.get('workers.maxConcurrentJobs') || 1;
 
-    // Process tracks in concurrent batches
-    const promises = trackIds.map(async (trackId) => {
-      try {
-        await this.analyzeTrack(trackId, analyzers);
-        completed++;
+    console.log(`[ENGINE] 📊 Processing ${trackIds.length} tracks with max concurrency: ${maxConcurrent}`);
 
-        console.log(`[ENGINE] 📊 Completed analysis ${completed}/${trackIds.length}: track ${trackId}`);
+    // Process tracks with controlled concurrency
+    for (let i = 0; i < trackIds.length; i += maxConcurrent) {
+      const batch = trackIds.slice(i, i + maxConcurrent);
 
-        this.events.emit('analysis:progress', {
-          trackId,
-          completed,
-          total: trackIds.length,
-          progress: Math.round((completed / trackIds.length) * 100)
-        });
+      console.log(`[ENGINE] 📦 Processing batch ${Math.floor(i/maxConcurrent) + 1}/${Math.ceil(trackIds.length/maxConcurrent)}: ${batch.length} tracks`);
 
-      } catch (error) {
-        console.error(`[ENGINE] ❌ Analysis failed for track ${trackId}:`, error);
-        completed++; // Count failures as completed for progress tracking
+      const batchPromises = batch.map(async (trackId) => {
+        try {
+          console.log(`[ENGINE] 🔍 Starting analysis for track ${trackId}`);
+          await this.analyzeTrack(trackId, analyzers);
+          completed++;
+          console.log(`[ENGINE] ✅ Completed analysis for track ${trackId} (${completed}/${trackIds.length})`);
+
+          this.events.emit('analysis:progress', {
+            trackId,
+            completed,
+            total: trackIds.length,
+            progress: Math.round((completed / trackIds.length) * 100)
+          });
+
+        } catch (error) {
+          console.error(`[ENGINE] ❌ Analysis failed for track ${trackId}:`, error);
+          completed++; // Count failures as completed for progress tracking
+        }
+      });
+
+      // Wait for current batch to complete before starting next batch
+      await Promise.all(batchPromises);
+
+      // Small delay between batches to prevent overwhelming the system
+      if (i + maxConcurrent < trackIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    });
-
-    // Wait for all tracks to complete
-    await Promise.all(promises);
+    }
 
     this.events.emit('analysis:completed', {
       totalTracks: trackIds.length,
@@ -624,29 +641,25 @@ export class CleanCueEngine {
     return cues;
   }
 
-  // Health check
+  // Health check - Enhanced with HealthEngine
   async runDoctor(): Promise<HealthReport> {
     const tracks = this.db.getAllTracks();
-    const issues = this.db.getHealthIssues();
+    const healthIssues = await this.healthEngine.runHealthCheck();
 
-    // Add file system checks
-    for (const track of tracks) {
-      try {
-        await fs.access(track.path);
-      } catch {
-        issues.push({
-          trackId: track.id,
-          path: track.path,
-          type: 'missing_file',
-          severity: 'error',
-          message: 'File no longer exists on disk'
-        });
-      }
-    }
+    // Convert new health issues to legacy format for compatibility
+    const legacyIssues = healthIssues
+      .filter(issue => issue.type === 'error')
+      .map(issue => ({
+        trackId: issue.trackId || '',
+        path: issue.details || '',
+        type: issue.category.toLowerCase().replace(/\s+/g, '_') as any,
+        severity: issue.type as any,
+        message: issue.message
+      }));
 
     return {
       totalTracks: tracks.length,
-      issues
+      issues: legacyIssues
     };
   }
 
@@ -1136,8 +1149,8 @@ export class CleanCueEngine {
     }
   }
 
-  // Health checking functionality
-  getLibraryHealth(): Array<{
+  // Health checking functionality - Enhanced with HealthEngine
+  async getLibraryHealth(): Promise<Array<{
     id: string;
     type: 'error' | 'warning' | 'info';
     category: string;
@@ -1145,167 +1158,10 @@ export class CleanCueEngine {
     details?: string;
     trackId?: string;
     canAutoFix?: boolean;
-  }> {
-    const issues: Array<any> = [];
-    const tracks = this.db.getAllTracks();
-
-    for (const track of tracks) {
-      // Check if file exists
-      try {
-        require('fs').accessSync(track.path);
-      } catch {
-        issues.push({
-          id: `missing_file_${track.id}`,
-          type: 'error',
-          category: 'Missing Files',
-          message: `Track file not found: ${track.title || 'Unknown'}`,
-          details: `File path: ${track.path}`,
-          trackId: track.id,
-          canAutoFix: false
-        });
-      }
-
-      // Check for missing metadata
-      if (!track.title || track.title.trim() === '') {
-        issues.push({
-          id: `missing_title_${track.id}`,
-          type: 'warning',
-          category: 'Missing Metadata',
-          message: `Track missing title`,
-          details: `Path: ${track.path}`,
-          trackId: track.id,
-          canAutoFix: true
-        });
-      }
-
-      if (!track.artist || track.artist.trim() === '') {
-        issues.push({
-          id: `missing_artist_${track.id}`,
-          type: 'warning',
-          category: 'Missing Metadata',
-          message: `Track missing artist`,
-          details: `Title: ${track.title || 'Unknown'}`,
-          trackId: track.id,
-          canAutoFix: true
-        });
-      }
-
-      // Check filename parsing confidence and metadata conflicts
-      if (track.filenameConfidence !== undefined) {
-        const filename = track.path.split('/').pop() || 'Unknown';
-
-        if (track.filenameConfidence < 0.4) {
-          issues.push({
-            id: `low_confidence_${track.id}`,
-            type: 'warning',
-            category: 'Filename Parsing',
-            message: `Low confidence filename parsing`,
-            details: `Confidence: ${Math.round(track.filenameConfidence * 100)}% - Filename: ${filename}`,
-            trackId: track.id,
-            canAutoFix: false
-          });
-        } else if (track.filenameConfidence < 0.6) {
-          issues.push({
-            id: `medium_confidence_${track.id}`,
-            type: 'info',
-            category: 'Filename Parsing',
-            message: `Medium confidence filename parsing`,
-            details: `Confidence: ${Math.round(track.filenameConfidence * 100)}% - Consider reviewing metadata for: ${filename}`,
-            trackId: track.id,
-            canAutoFix: false
-          });
-        }
-
-        // Check for metadata conflicts (filename vs tags)
-        if (track.suggestedTitle && track.title && track.suggestedTitle !== track.title) {
-          const similarity = this.calculateTextSimilarity(track.suggestedTitle, track.title);
-          if (similarity < 0.7) {
-            issues.push({
-              id: `metadata_conflict_title_${track.id}`,
-              type: 'warning',
-              category: 'Metadata Conflicts',
-              message: `Title mismatch detected`,
-              details: `Filename suggests: "${track.suggestedTitle}" but tag shows: "${track.title}"`,
-              trackId: track.id,
-              canAutoFix: false
-            });
-          }
-        }
-
-        if (track.suggestedArtist && track.artist && track.suggestedArtist !== track.artist) {
-          const similarity = this.calculateTextSimilarity(track.suggestedArtist, track.artist);
-          if (similarity < 0.7) {
-            issues.push({
-              id: `metadata_conflict_artist_${track.id}`,
-              type: 'warning',
-              category: 'Metadata Conflicts',
-              message: `Artist mismatch detected`,
-              details: `Filename suggests: "${track.suggestedArtist}" but tag shows: "${track.artist}"`,
-              trackId: track.id,
-              canAutoFix: false
-            });
-          }
-        }
-      }
-
-      // Validate BPM range (catch analysis errors)
-      if (track.bpm && (track.bpm < 50 || track.bpm > 250)) {
-        const likelyCorrect = track.bpm < 50 ? track.bpm * 2 : track.bpm / 2;
-        issues.push({
-          id: `invalid_bpm_${track.id}`,
-          type: 'warning',
-          category: 'Analysis Quality',
-          message: `Unusual BPM detected: ${track.bpm}`,
-          details: `Track: ${track.title || 'Unknown'} - Consider re-analysis (possibly ${likelyCorrect} BPM)`,
-          trackId: track.id,
-          canAutoFix: true
-        });
-      }
-
-      // Check for missing analysis
-      const analyses = this.db.getAnalysesByTrack(track.id);
-      const hasTempoAnalysis = analyses.some(a => a.analyzerName === 'tempo' && a.status === 'completed');
-      const hasKeyAnalysis = analyses.some(a => a.analyzerName === 'key' && a.status === 'completed');
-
-      if (!hasTempoAnalysis) {
-        issues.push({
-          id: `missing_bpm_${track.id}`,
-          type: 'info',
-          category: 'Missing Analysis',
-          message: `Track missing BPM analysis`,
-          details: `Title: ${track.title || 'Unknown'} - ${track.artist || 'Unknown'}`,
-          trackId: track.id,
-          canAutoFix: true
-        });
-      }
-
-      if (!hasKeyAnalysis) {
-        issues.push({
-          id: `missing_key_${track.id}`,
-          type: 'info',
-          category: 'Missing Analysis',
-          message: `Track missing key analysis`,
-          details: `Title: ${track.title || 'Unknown'} - ${track.artist || 'Unknown'}`,
-          trackId: track.id,
-          canAutoFix: true
-        });
-      }
-    }
-
-    // Check for duplicate groups
-    const duplicateGroups = this.getDuplicateGroups();
-    if (duplicateGroups.length > 0) {
-      issues.push({
-        id: 'duplicate_tracks',
-        type: 'warning',
-        category: 'Duplicates',
-        message: `Found ${duplicateGroups.length} groups of potential duplicate tracks`,
-        details: `Use the Duplicate Detection feature to review and clean up duplicates`,
-        canAutoFix: false
-      });
-    }
-
-    return issues;
+    autoFixAction?: string;
+    suggestion?: string;
+  }>> {
+    return this.healthEngine.runHealthCheck();
   }
 
   private calculateTextSimilarity(str1: string, str2: string): number {
@@ -1328,13 +1184,13 @@ export class CleanCueEngine {
 
   async scanLibraryHealth(): Promise<{ success: boolean; issuesFound: number }> {
     try {
-      console.log('[ENGINE] Starting library health scan...');
+      console.log('[ENGINE] Starting enhanced library health scan...');
       this.events.emit('health:scan:started', {});
 
-      const issues = this.getLibraryHealth();
+      const issues = await this.healthEngine.runHealthCheck();
 
-      console.log(`[ENGINE] Found ${issues.length} health issues`);
-      this.events.emit('health:scan:completed', { issuesFound: issues.length });
+      console.log(`[ENGINE] Found ${issues.length} health issues across all categories`);
+      this.events.emit('health:scan:completed', { issues });
 
       return { success: true, issuesFound: issues.length };
     } catch (error) {
@@ -1346,36 +1202,47 @@ export class CleanCueEngine {
 
   async fixHealthIssue(issueId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const issue = this.getLibraryHealth().find(i => i.id === issueId);
-      if (!issue) {
-        return { success: false, message: 'Issue not found' };
-      }
-
-      if (!issue.canAutoFix) {
-        return { success: false, message: 'This issue cannot be automatically fixed' };
-      }
-
-      if (issue.category === 'Missing Analysis' && issue.trackId) {
-        // Trigger analysis for the track
-        if (issue.id.includes('missing_bpm')) {
-          await this.analyzeTrack(issue.trackId, ['tempo']);
-          return { success: true, message: 'BPM analysis started' };
-        } else if (issue.id.includes('missing_key')) {
-          await this.analyzeTrack(issue.trackId, ['key']);
-          return { success: true, message: 'Key analysis started' };
-        }
-      }
-
-      if (issue.category === 'Missing Metadata' && issue.trackId) {
-        // For metadata issues, we can suggest using tag editors or manual input
-        return { success: false, message: 'Metadata issues require manual correction' };
-      }
-
-      return { success: false, message: 'Unable to fix this issue automatically' };
+      return await this.healthEngine.autoFix(issueId, this);
     } catch (error) {
       console.error('[ENGINE] Failed to fix health issue:', error);
       return { success: false, message: (error as Error).message };
     }
+  }
+
+  // Add new enhanced health methods
+  async previewHealthFix(issueId: string): Promise<{ success: boolean; preview: string; actions: string[] }> {
+    try {
+      return await this.healthEngine.previewFix(issueId);
+    } catch (error) {
+      console.error('[ENGINE] Failed to preview health fix:', error);
+      return { success: false, preview: 'Failed to generate preview', actions: [] };
+    }
+  }
+
+  async bulkFixHealthIssues(issueIds: string[]): Promise<Array<{ issueId: string; success: boolean; message: string }>> {
+    const results = [];
+    for (const issueId of issueIds) {
+      try {
+        const result = await this.fixHealthIssue(issueId);
+        results.push({ issueId, ...result });
+      } catch (error) {
+        results.push({
+          issueId,
+          success: false,
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    return results;
+  }
+
+  getHealthStats(): {
+    critical: number;
+    quality: number;
+    enhancement: number;
+    autoFixable: number;
+  } {
+    return this.healthEngine.getStats();
   }
 
   // YouTube downloader methods

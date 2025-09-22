@@ -33,14 +33,14 @@ export class WorkerPool extends EventEmitter {
     super();
 
     this.config = {
-      maxWorkers: 4,
-      maxConcurrentJobs: 2, // Allow 2 concurrent analysis jobs by default
-      jobTimeout: 300000, // 5 minutes
-      retryAttempts: 2,
+      maxWorkers: 2,
+      maxConcurrentJobs: 1, // More conservative: 1 job at a time for stability
+      jobTimeout: 180000, // 3 minutes - shorter timeout
+      retryAttempts: 1, // Fewer retries to avoid overwhelming system
       pythonPath: '/Users/wagner/cleancue/packages/workers/venv/bin/python',
       workersPath: path.resolve(__dirname, '../../workers'),
-      watchdogInterval: 30000, // Check every 30 seconds
-      maxJobAge: 600000, // 10 minutes max job age
+      watchdogInterval: 15000, // Check every 15 seconds for faster cleanup
+      maxJobAge: 300000, // 5 minutes max job age
       ...config
     };
 

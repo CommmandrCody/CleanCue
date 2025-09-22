@@ -88,8 +88,8 @@ export class ConfigManager {
         }
       },
       stems: {
-        outputPath: path.join(os.homedir(), '.cleancue', 'stems'),
-        tempPath: path.join(os.homedir(), '.cleancue', 'temp'),
+        outputPath: path.join(os.homedir(), 'Music', 'CleanCue Stems'),
+        tempPath: path.join(os.homedir(), '.cleancue', 'temp'), // temp can stay hidden
         enabled: true
       },
       export: {

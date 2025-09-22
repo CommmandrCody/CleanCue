@@ -43,7 +43,7 @@ export function ScanDialog({ onClose }: ScanDialogProps) {
   const [scanLogs, setScanLogs] = useState<string[]>([])
   const [includeSubdirectories, setIncludeSubdirectories] = useState(true)
   const [skipDuplicateDetection, setSkipDuplicateDetection] = useState(true)
-  const [autoAnalyzeBpmKey, setAutoAnalyzeBpmKey] = useState(true)
+  const [autoAnalyzeBpmKey, setAutoAnalyzeBpmKey] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scanInProgressRef = useRef(false)
 

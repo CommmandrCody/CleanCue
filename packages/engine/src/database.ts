@@ -504,6 +504,59 @@ export class CleanCueDatabase {
     return analyses;
   }
 
+  /**
+   * PERFORMANCE: Batch get analyses for multiple tracks (eliminates N+1 query problem)
+   */
+  getAnalysesByTrackIds(trackIds: string[]): Analysis[] {
+    this.ensureInitialized();
+    if (trackIds.length === 0) return [];
+
+    // Use parameterized IN clause for batch query
+    const placeholders = trackIds.map(() => '?').join(',');
+    const stmt = this.db!.prepare(`
+      SELECT * FROM analyses
+      WHERE track_id IN (${placeholders})
+      ORDER BY track_id, created_at DESC
+    `);
+
+    stmt.bind(trackIds);
+
+    const analyses: Analysis[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      analyses.push(this.rowToAnalysis(row));
+    }
+
+    stmt.free();
+    return analyses;
+  }
+
+  /**
+   * PERFORMANCE: Batch get tracks by IDs
+   */
+  getTracksByIds(trackIds: string[]): Track[] {
+    this.ensureInitialized();
+    if (trackIds.length === 0) return [];
+
+    const placeholders = trackIds.map(() => '?').join(',');
+    const stmt = this.db!.prepare(`
+      SELECT * FROM tracks
+      WHERE id IN (${placeholders})
+      ORDER BY created_at DESC
+    `);
+
+    stmt.bind(trackIds);
+
+    const tracks: Track[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      tracks.push(this.rowToTrack(row));
+    }
+
+    stmt.free();
+    return tracks;
+  }
+
   async insertCue(cue: Omit<CuePoint, 'id' | 'createdAt'>): Promise<CuePoint> {
     this.ensureInitialized();
 

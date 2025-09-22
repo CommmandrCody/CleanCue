@@ -243,8 +243,19 @@ export class StemSeparationService {
       status: 'pending'
     });
 
-    // Create output directory for this separation
-    const outputDir = path.join(this.outputBaseDir, separationId);
+    // Get track info to create organized folder name
+    const track = this.db.getTrackById(trackId);
+    if (!track) {
+      throw new Error(`Track not found: ${trackId}`);
+    }
+
+    // Create a clean folder name from track info
+    const artist = track.artist || 'Unknown Artist';
+    const title = track.title || track.filename.replace(/\.[^/.]+$/, ''); // Remove extension
+    const cleanFolderName = this.sanitizeFolderName(`${artist} - ${title}`);
+
+    // Create output directory with organized name
+    const outputDir = path.join(this.outputBaseDir, cleanFolderName);
     await fs.mkdir(outputDir, { recursive: true, mode: 0o755 });
 
     // Ensure proper ownership/permissions in case process has elevated permissions
@@ -395,12 +406,19 @@ export class StemSeparationService {
       // Get separation info to delete files
       const separation = await this.getSeparationStatus(separationId);
       if (separation) {
-        // Delete output files
-        const outputDir = path.join(this.outputBaseDir, separationId);
-        try {
-          await fs.rm(outputDir, { recursive: true, force: true });
-        } catch (error) {
-          console.warn(`Failed to delete output directory: ${error}`);
+        // Get track info to recreate the folder path
+        const track = this.db.getTrackById(separation.trackId);
+        if (track) {
+          const artist = track.artist || 'Unknown Artist';
+          const title = track.title || track.filename.replace(/\.[^/.]+$/, '');
+          const cleanFolderName = this.sanitizeFolderName(`${artist} - ${title}`);
+          const outputDir = path.join(this.outputBaseDir, cleanFolderName);
+
+          try {
+            await fs.rm(outputDir, { recursive: true, force: true });
+          } catch (error) {
+            console.warn(`Failed to delete output directory: ${error}`);
+          }
         }
       }
 
@@ -455,5 +473,17 @@ export class StemSeparationService {
 
   getRunningProcesses(): string[] {
     return Array.from(this.runningProcesses.keys());
+  }
+
+  private sanitizeFolderName(name: string): string {
+    // Remove/replace problematic characters for folder names
+    return name
+      .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filesystem characters
+      .replace(/[\x00-\x1f\x80-\x9f]/g, '') // Remove control characters
+      .replace(/^\.+/, '') // Remove leading dots
+      .replace(/\.+$/, '') // Remove trailing dots
+      .replace(/\s+/g, ' ') // Multiple spaces to single space
+      .trim()
+      .substring(0, 100); // Limit length to 100 characters
   }
 }

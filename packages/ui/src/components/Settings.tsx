@@ -92,7 +92,7 @@ const defaultSettings: AppSettings = {
   },
   stems: {
     enabled: true,
-    outputPath: '~/.cleancue/stems',
+    outputPath: '~/Music/CleanCue Stems',
     tempPath: '~/.cleancue/temp',
     defaultModel: 'htdemucs',
     defaultQuality: 'medium',
@@ -543,7 +543,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                               value={settings.stems.outputPath}
                               onChange={(e) => updateSettings('stems', { outputPath: e.target.value })}
                               className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                              placeholder="~/.cleancue/stems"
+                              placeholder="~/Music/CleanCue Stems"
                             />
                             <button className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors">
                               Browse

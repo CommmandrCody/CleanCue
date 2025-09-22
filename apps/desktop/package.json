@@ -56,7 +56,17 @@
       "**/node_modules/debug/**/*",
       "**/node_modules/ms/**/*",
       "**/node_modules/music-metadata/**/*",
-      "**/node_modules/@cleancue/workers/**/*"
+      "**/node_modules/strtok3/**/*",
+      "**/node_modules/token-types/**/*",
+      "**/node_modules/peek-readable/**/*",
+      "**/node_modules/@cleancue/engine/**/*",
+      "**/node_modules/@cleancue/shared/**/*",
+      "**/node_modules/@cleancue/workers/**/*",
+      "**/node_modules/sql.js/**/*",
+      "**/node_modules/fast-glob/**/*",
+      "**/node_modules/uuid/**/*",
+      "**/node_modules/xxhash-wasm/**/*",
+      "**/node_modules/axios/**/*"
     ],
     "extraResources": [
       {

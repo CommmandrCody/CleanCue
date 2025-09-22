@@ -474,14 +474,34 @@ class CleanCueApp {
         role: 'help',
         submenu: [
           {
-            label: 'About CleanCue',
-            click: () => this.showAbout()
+            label: 'Documentation',
+            click: async () => {
+              await shell.openExternal('https://docs.cleancue.cmndrcody.com')
+            }
           },
           {
-            label: 'Learn More',
+            label: 'User Guide',
             click: async () => {
-              await shell.openExternal('https://github.com/CommmandrCody/CleanCue')
+              await shell.openExternal('https://docs.cleancue.cmndrcody.com/user-guide')
             }
+          },
+          {
+            label: 'GitHub Repository',
+            click: async () => {
+              await shell.openExternal('https://github.com/CmndrCody/CleanCue')
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'Report Issue',
+            click: async () => {
+              await shell.openExternal('https://github.com/CmndrCody/CleanCue/issues')
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'About CleanCue',
+            click: () => this.showAbout()
           }
         ]
       }
@@ -1226,7 +1246,26 @@ class CleanCueApp {
       type: 'info',
       title: 'About CleanCue',
       message: 'CleanCue',
-      detail: `Version: ${app.getVersion()}\\n\\nOpen-source DJ library management toolkit.\\nBuilt with Electron and React.`
+      detail: `Version: ${app.getVersion()}
+
+Take control of your music library with advanced DJ tools.
+
+Created by CmndrCody
+https://cmndrcody.com
+
+Open-source DJ library management toolkit
+Built with Electron, React, and TypeScript
+
+Features:
+• Audio analysis (BPM, key, energy)
+• STEM separation with AI models
+• Duplicate detection and cleanup
+• USB export with filename normalization
+• Library health monitoring
+• YouTube downloader integration
+
+For documentation and support:
+https://docs.cleancue.cmndrcody.com`
     })
   }
 
