@@ -1,0 +1,47 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer ring (vinyl record) -->
+  <circle cx="20" cy="20" r="18" fill="url(#gradient1)" stroke="url(#gradient2)" stroke-width="1"/>
+
+  <!-- Inner ring (label area) -->
+  <circle cx="20" cy="20" r="12" fill="url(#gradient3)"/>
+
+  <!-- Center hole -->
+  <circle cx="20" cy="20" r="3" fill="#1a1a1a"/>
+
+  <!-- Vinyl grooves -->
+  <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+  <circle cx="20" cy="20" r="13" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+  <circle cx="20" cy="20" r="11" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+
+  <!-- DJ/Cue indicators (small dots) -->
+  <circle cx="20" cy="8" r="1.5" fill="#60a5fa" opacity="0.8"/>
+  <circle cx="32" cy="20" r="1.5" fill="#a855f7" opacity="0.8"/>
+  <circle cx="20" cy="32" r="1.5" fill="#10b981" opacity="0.8"/>
+  <circle cx="8" cy="20" r="1.5" fill="#f59e0b" opacity="0.8"/>
+
+  <!-- Clean/Waveform icon in center -->
+  <path d="M15 18 L17 16 L19 18 L21 16 L23 18 L25 16" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M15 22 L17 24 L19 22 L21 24 L23 22 L25 24" stroke="#a855f7" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <defs>
+    <!-- Gradient for outer ring -->
+    <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f2937;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#374151;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1f2937;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Gradient for border -->
+    <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:0.6" />
+      <stop offset="50%" style="stop-color:#a855f7;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:0.6" />
+    </linearGradient>
+
+    <!-- Gradient for inner label -->
+    <linearGradient id="gradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#374151;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4b5563;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

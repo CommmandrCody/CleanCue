@@ -24,3 +24,8 @@ code {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* macOS window controls padding - space for traffic light buttons */
+.mac-window-controls-padding {
+  padding-left: 80px; /* Space for red, yellow, green buttons on macOS */
+}
