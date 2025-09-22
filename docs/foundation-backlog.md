@@ -88,12 +88,16 @@ The core principle: Build a rock-solid foundation for music library management b
 - [ ] Manual override system for incorrect matches
 
 ### Filename Intelligence
-- [ ] Smart parsing engine for extracting metadata from filenames
-- [ ] Support for various separators (-, _, [, ], (, ))
-- [ ] Track number extraction and validation
-- [ ] Year/date extraction from filenames
-- [ ] Label/catalog number detection
-- [ ] Remix/version detection (Original Mix, Radio Edit, etc.)
+- [x] **Smart parsing engine for extracting metadata from filenames** ✅ *v0.2.3 - 20+ DJ-specific patterns*
+- [x] **Support for various separators (-, _, [, ], (, ))** ✅ *v0.2.3 - All common separators handled*
+- [x] **Track number extraction and validation** ✅ *v0.2.3 - Pattern: 01. Artist - Title*
+- [x] **Year/date extraction from filenames** ✅ *v0.2.3 - (2024) and [2024] patterns*
+- [x] **Label/catalog number detection** ✅ *v0.2.3 - [LABEL001] pattern support*
+- [x] **Remix/version detection** ✅ *v0.2.3 - All DJ remix patterns + YouTube video types*
+- [x] **YouTube-dl filename support** ✅ *v0.2.3 - Channel - Title [VideoID] patterns*
+- [x] **BPM and Key extraction** ✅ *v0.2.3 - (128 BPM) and (Am/8A) extraction*
+- [x] **Featured artist detection** ✅ *v0.2.3 - feat./ft./featuring patterns*
+- [x] **Multiple remixer support** ✅ *v0.2.3 - Remixer1 & Remixer2 patterns*
 
 ---
 

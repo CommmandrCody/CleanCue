@@ -27,24 +27,72 @@ except ImportError:
 
 class AdvancedMetadataExtractor:
     def __init__(self):
-        # Common DJ filename patterns
+        # Enhanced DJ filename patterns (order matters - most specific first)
         self.filename_patterns = [
-            # Artist - Title patterns
-            r'^(.+?)\s*[-–—]\s*(.+?)(?:\s*\[(.+?)\])?(?:\s*\((.+?)\))?$',
-            r'^(.+?)\s*_\s*(.+?)(?:_(.+?))?$',
+            # YouTube-dl / yt-dlp patterns (common DJ downloads)
+            # Channel Name - Song Title [Video ID]
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\[([A-Za-z0-9_-]{11})\]$',
+            # Song Title - Channel Name [Video ID]
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\[([A-Za-z0-9_-]{11})\]$',
+            # Channel Name - Song Title (Official Video)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(official|music|lyric|audio)\s*(?:video|music|audio)?\s*\)$',
+            # Artist - Song Title (Label Channel)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*(?:records|music|entertainment)\s*\)$',
+            # Complex DJ patterns with multiple metadata
+            # [LABEL] Artist feat. Featured - Title (Remixer Remix) (128 BPM) (Am) [2024]
+            r'^(?:\[([A-Z0-9]+)\])?\s*(.+?)\s*(?:feat\.|featuring|ft\.)\s*(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*(?:remix|mix|edit)\s*\)\s*(?:\(\s*(\d+)\s*bpm\s*\))?\s*(?:\(\s*([A-G][#b]?m?|[0-9]{1,2}[AB])\s*\))?\s*(?:\[(\d{4})\])?$',
 
-            # Track number patterns
-            r'^(\d+)\.?\s*(.+?)\s*[-–—]\s*(.+?)(?:\s*\((.+?)\))?$',
+            # BPM and Key patterns
+            # Artist - Title (128 BPM) (Am)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(\d+)\s*bpm\s*\)\s*\(\s*([A-G][#b]?m?|[0-9]{1,2}[AB])\s*\)$',
+            # Artist - Title (Am) (128 BPM)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*([A-G][#b]?m?|[0-9]{1,2}[AB])\s*\)\s*\(\s*(\d+)\s*bpm\s*\)$',
+            # Artist - Title (128 BPM)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(\d+)\s*bpm\s*\)$',
+            # Artist - Title (Am)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*([A-G][#b]?m?|[0-9]{1,2}[AB])\s*\)$',
 
-            # Remix patterns
-            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*(?:remix|mix|edit|bootleg|mashup)\s*\)$',
+            # Label and catalog patterns
+            # [LABEL001] Artist - Title
+            r'^\[([A-Z0-9]+)\]\s*(.+?)\s*[-–—]\s*(.+?)(?:\s*\((.+?)\))?$',
+            # [Genre] Artist - Title
+            r'^\[([A-Za-z\s&]+)\]\s*(.+?)\s*[-–—]\s*(.+?)(?:\s*\((.+?)\))?$',
+
+            # Year patterns
+            # Artist - Title (2024)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(\d{4})\s*\)$',
+            # Artist - Title [2024]
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\[\s*(\d{4})\s*\]$',
+
+            # DJ-specific version patterns
+            # Artist - Title (Extended Mix)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(extended|radio|club|dub|vocal|instrumental|acapella|clean|explicit|promo|original)\s*(?:mix|edit|version)?\s*\)$',
+
+            # Multiple remixers
+            # Artist - Title (Remixer1 & Remixer2 Remix)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*&\s*(.+?)\s*(?:remix|mix|edit)\s*\)$',
+
+            # Featuring patterns with remix
+            # Artist feat. Featured - Title (Remixer Remix)
+            r'^(.+?)\s*(?:feat\.|featuring|ft\.)\s*(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*(?:remix|mix|edit)\s*\)$',
+            # Artist feat. Featured - Title
+            r'^(.+?)\s*(?:feat\.|featuring|ft\.)\s*(.+?)\s*[-–—]\s*(.+?)$',
+
+            # Standard remix patterns
+            # Artist - Title (Remixer Remix)
+            r'^(.+?)\s*[-–—]\s*(.+?)\s*\(\s*(.+?)\s*(?:remix|mix|edit|bootleg|mashup|rework|refix|vip)\s*\)$',
+            # Artist - Title [Remixer Remix]
             r'^(.+?)\s*[-–—]\s*(.+?)\s*\[\s*(.+?)\s*(?:remix|mix|edit)\s*\]$',
 
-            # Label/catalog patterns
-            r'^(?:\[(.+?)\])?\s*(.+?)\s*[-–—]\s*(.+?)(?:\s*\[(.+?)\])?$',
+            # Track number patterns
+            # 01. Artist - Title
+            r'^(\d+)\.?\s*(.+?)\s*[-–—]\s*(.+?)(?:\s*\((.+?)\))?$',
 
-            # Featuring patterns
-            r'^(.+?)\s*(?:feat\.|featuring|ft\.)\s*(.+?)\s*[-–—]\s*(.+?)$',
+            # Basic patterns
+            # Artist - Title
+            r'^(.+?)\s*[-–—]\s*(.+?)(?:\s*\[(.+?)\])?(?:\s*\((.+?)\))?$',
+            # Artist_Title or Artist_-_Title
+            r'^(.+?)\s*_\s*[-–—]?\s*(.+?)(?:_(.+?))?$',
         ]
 
         # Genre normalization map
@@ -319,7 +367,7 @@ class AdvancedMetadataExtractor:
         return {}
 
     def parse_filename(self, filename: str) -> Dict[str, Any]:
-        """Parse filename for artist, title, remix info using regex patterns."""
+        """Parse filename for artist, title, remix info using enhanced regex patterns."""
 
         # Clean filename
         cleaned = self.clean_filename(filename)
@@ -338,36 +386,145 @@ class AdvancedMetadataExtractor:
                 }
 
                 # Extract based on pattern type
-                if i == 0:  # Basic Artist - Title
+                if i == 0:  # YouTube pattern: Channel - Title [Video ID]
+                    channel_or_artist = self.clean_string(groups[0])
+                    title_or_song = self.clean_string(groups[1])
+                    video_id = self.clean_string(groups[2])
+
+                    # Determine if first part is channel or artist
+                    if self.is_likely_artist_name(channel_or_artist, title_or_song):
+                        result.update({
+                            'artist': channel_or_artist,
+                            'title': title_or_song,
+                            'youtube_id': video_id,
+                        })
+                    else:
+                        result.update({
+                            'artist': self.extract_artist_from_title(title_or_song),
+                            'title': self.clean_song_title(title_or_song),
+                            'youtube_channel': channel_or_artist,
+                            'youtube_id': video_id,
+                        })
+                elif i == 1:  # YouTube pattern: Title - Channel [Video ID] (same as 0)
+                    result.update({
+                        'artist': self.extract_artist_from_title(self.clean_string(groups[0])),
+                        'title': self.clean_song_title(self.clean_string(groups[0])),
+                        'youtube_channel': self.clean_string(groups[1]),
+                        'youtube_id': self.clean_string(groups[2]),
+                    })
+                elif i == 2:  # YouTube: Artist - Song (Official Video)
                     result.update({
                         'artist': self.clean_string(groups[0]),
                         'title': self.clean_string(groups[1]),
-                        'remixer': self.clean_string(groups[2]) if groups[2] else None,
+                        'version': self.clean_string(groups[2]).title() + ' Video',
+                        'source': 'youtube',
+                    })
+                elif i == 3:  # YouTube: Artist - Song (Label)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'label': self.clean_string(groups[2]),
+                        'source': 'youtube',
+                    })
+                elif i == 4:  # Complex DJ pattern with multiple metadata
+                    result.update({
+                        'label': self.clean_string(groups[0]) if groups[0] else None,
+                        'artist': self.clean_string(groups[1]),
+                        'featured_artist': self.clean_string(groups[2]),
+                        'title': self.clean_string(groups[3]),
+                        'remixer': self.clean_string(groups[4]),
+                        'bpm': int(groups[5]) if groups[5] else None,
+                        'key': self.clean_string(groups[6]) if groups[6] else None,
+                        'year': int(groups[7]) if groups[7] else None,
+                    })
+                elif i == 1:  # Artist - Title (128 BPM) (Am)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'bpm': int(groups[2]) if groups[2] else None,
+                        'key': self.clean_string(groups[3]) if groups[3] else None,
+                    })
+                elif i == 2:  # Artist - Title (Am) (128 BPM)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'key': self.clean_string(groups[2]) if groups[2] else None,
+                        'bpm': int(groups[3]) if groups[3] else None,
+                    })
+                elif i == 3:  # Artist - Title (128 BPM)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'bpm': int(groups[2]) if groups[2] else None,
+                    })
+                elif i == 4:  # Artist - Title (Am)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'key': self.clean_string(groups[2]) if groups[2] else None,
+                    })
+                elif i in [5, 6]:  # Label/Genre patterns
+                    label_or_genre = self.clean_string(groups[0])
+                    result.update({
+                        'artist': self.clean_string(groups[1]),
+                        'title': self.clean_string(groups[2]),
                         'version': self.clean_string(groups[3]) if groups[3] else None,
                     })
-                elif i == 2:  # Track number pattern
+                    # Determine if it's a label (alphanumeric) or genre (words)
+                    if re.match(r'^[A-Z0-9]+$', label_or_genre):
+                        result['label'] = label_or_genre
+                    else:
+                        result['genre'] = label_or_genre
+                elif i in [7, 8]:  # Year patterns
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'year': int(groups[2]) if groups[2] else None,
+                    })
+                elif i == 9:  # DJ version patterns (Extended Mix, etc.)
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'version': self.clean_string(groups[2]).title() + (' Mix' if 'mix' not in groups[2].lower() else ''),
+                    })
+                elif i == 10:  # Multiple remixers
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'remixer': f"{self.clean_string(groups[2])} & {self.clean_string(groups[3])}",
+                    })
+                elif i == 11:  # Featuring with remix
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'featured_artist': self.clean_string(groups[1]),
+                        'title': self.clean_string(groups[2]),
+                        'remixer': self.clean_string(groups[3]),
+                    })
+                elif i == 12:  # Basic featuring
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'featured_artist': self.clean_string(groups[1]),
+                        'title': self.clean_string(groups[2]),
+                    })
+                elif i in [13, 14]:  # Standard remix patterns
+                    result.update({
+                        'artist': self.clean_string(groups[0]),
+                        'title': self.clean_string(groups[1]),
+                        'remixer': self.clean_string(groups[2]),
+                    })
+                elif i == 15:  # Track number pattern
                     result.update({
                         'track_number': int(groups[0]) if groups[0] else None,
                         'artist': self.clean_string(groups[1]),
                         'title': self.clean_string(groups[2]),
                         'version': self.clean_string(groups[3]) if groups[3] else None,
                     })
-                elif i in [3, 4]:  # Remix patterns
-                    result.update({
-                        'artist': self.clean_string(groups[0]),
-                        'title': self.clean_string(groups[1]),
-                        'remixer': self.clean_string(groups[2]),
-                    })
-                elif i == 6:  # Featuring pattern
-                    result.update({
-                        'artist': self.clean_string(groups[0]),
-                        'featured_artist': self.clean_string(groups[1]),
-                        'title': self.clean_string(groups[2]),
-                    })
-                else:  # Generic pattern
+                else:  # Basic patterns
                     result.update({
                         'artist': self.clean_string(groups[0]) if groups[0] else None,
                         'title': self.clean_string(groups[1]) if groups[1] else None,
+                        'remixer': self.clean_string(groups[2]) if len(groups) > 2 and groups[2] else None,
+                        'version': self.clean_string(groups[3]) if len(groups) > 3 and groups[3] else None,
                     })
 
                 return result
@@ -435,23 +592,50 @@ class AdvancedMetadataExtractor:
         if not combined.get('artist') and filename_metadata.get('artist'):
             combined['artist'] = filename_metadata['artist']
 
+        # Add DJ-specific metadata from filename
+        dj_fields = ['remixer', 'featured_artist', 'label', 'version', 'youtube_id', 'youtube_channel']
+        for field in dj_fields:
+            if filename_metadata.get(field) and not combined.get(field):
+                combined[field] = filename_metadata[field]
+
+        # Handle BPM and Key from filename (prefer filename for accuracy)
+        if filename_metadata.get('bpm'):
+            combined['bpm'] = filename_metadata['bpm']
+        if filename_metadata.get('key'):
+            combined['key'] = filename_metadata['key']
+        if filename_metadata.get('year'):
+            combined['year'] = filename_metadata['year']
+
         # Add remix information from filename if not in tags
-        if filename_metadata.get('remixer') and not combined.get('remixer'):
-            combined['remixer'] = filename_metadata['remixer']
+        if filename_metadata.get('remixer') and not combined.get('original_artist'):
             combined['original_artist'] = combined.get('artist')
 
-        # Extract version information
-        title = combined.get('title', '')
-        for keyword in self.version_keywords:
-            if keyword.lower() in title.lower():
-                combined['version'] = keyword.title()
-                break
+        # Handle featured artists
+        if filename_metadata.get('featured_artist'):
+            # Add to title if not already there
+            title = combined.get('title', '')
+            featured = filename_metadata['featured_artist']
+            if featured.lower() not in title.lower():
+                if not any(keyword in title.lower() for keyword in ['feat', 'ft.', 'featuring']):
+                    combined['title'] = f"{title} (feat. {featured})"
 
-        # Normalize genre
-        if combined.get('genre'):
-            normalized_genre = self.genre_map.get(combined['genre'].lower())
-            if normalized_genre:
-                combined['genre'] = normalized_genre
+        # Extract version information from title if not from filename
+        if not combined.get('version'):
+            title = combined.get('title', '')
+            for keyword in self.version_keywords:
+                if keyword.lower() in title.lower():
+                    combined['version'] = keyword.title()
+                    break
+
+        # Normalize genre (prefer filename genre for DJ downloads)
+        genre_source = filename_metadata.get('genre') or combined.get('genre')
+        if genre_source:
+            normalized_genre = self.genre_map.get(genre_source.lower())
+            combined['genre'] = normalized_genre or genre_source
+
+        # Add source information
+        if filename_metadata.get('youtube_id'):
+            combined['source'] = 'youtube'
 
         return combined
 
@@ -523,6 +707,67 @@ class AdvancedMetadataExtractor:
         union = tokens1.union(tokens2)
 
         return len(intersection) / len(union) if union else 0.0
+
+    def is_likely_artist_name(self, name: str, title: str) -> bool:
+        """Determine if a string is likely an artist name vs channel name."""
+        name_lower = name.lower()
+        title_lower = title.lower()
+
+        # Common indicators of artist names
+        artist_indicators = [
+            # Artist name appears in title
+            any(word in title_lower for word in name_lower.split() if len(word) > 2),
+            # Not typical channel suffixes
+            not any(suffix in name_lower for suffix in ['tv', 'records', 'music', 'entertainment', 'official']),
+            # Reasonable artist name length
+            len(name.split()) <= 3,
+        ]
+
+        return sum(artist_indicators) >= 2
+
+    def extract_artist_from_title(self, title: str) -> str:
+        """Extract artist name from a title string."""
+        # Common patterns: "Artist - Song", "Artist: Song"
+        for separator in [' - ', ': ', ' by ']:
+            if separator in title:
+                return title.split(separator)[0].strip()
+
+        # Fallback: take first part before common words
+        common_words = ['official', 'music', 'video', 'audio', 'lyric']
+        words = title.split()
+
+        for i, word in enumerate(words):
+            if word.lower() in common_words:
+                return ' '.join(words[:i]).strip()
+
+        # Default: return first 1-3 words
+        return ' '.join(words[:3]).strip()
+
+    def clean_song_title(self, title: str) -> str:
+        """Clean a song title by removing common YouTube artifacts."""
+        cleaned = title
+
+        # Remove common YouTube suffixes
+        youtube_artifacts = [
+            r'\s*\(\s*official\s*(?:video|music|audio)?\s*\)',
+            r'\s*\[\s*official\s*(?:video|music|audio)?\s*\]',
+            r'\s*-\s*official\s*(?:video|music|audio)?',
+            r'\s*\|\s*official\s*(?:video|music|audio)?',
+            r'\s*\(\s*(?:lyrics?|lyric\s*video)\s*\)',
+            r'\s*\[\s*(?:lyrics?|lyric\s*video)\s*\]',
+            r'\s*\(\s*(?:hd|4k|1080p|720p)\s*\)',
+        ]
+
+        for pattern in youtube_artifacts:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+
+        # Extract artist - title if present
+        if ' - ' in cleaned:
+            parts = cleaned.split(' - ', 1)
+            if len(parts) == 2:
+                return parts[1].strip()
+
+        return cleaned.strip()
 
 def main():
     parser = argparse.ArgumentParser(description='Advanced metadata extraction worker')
