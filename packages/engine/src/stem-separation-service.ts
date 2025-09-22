@@ -244,7 +244,7 @@ export class StemSeparationService {
     });
 
     // Get track info to create organized folder name
-    const track = this.db.getTrackById(trackId);
+    const track = this.db.getTrack(trackId);
     if (!track) {
       throw new Error(`Track not found: ${trackId}`);
     }
@@ -407,7 +407,7 @@ export class StemSeparationService {
       const separation = await this.getSeparationStatus(separationId);
       if (separation) {
         // Get track info to recreate the folder path
-        const track = this.db.getTrackById(separation.trackId);
+        const track = this.db.getTrack(separation.trackId);
         if (track) {
           const artist = track.artist || 'Unknown Artist';
           const title = track.title || track.filename.replace(/\.[^/.]+$/, '');
