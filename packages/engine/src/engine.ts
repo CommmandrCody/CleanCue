@@ -1190,6 +1190,78 @@ export class CleanCueEngine {
         });
       }
 
+      // Check filename parsing confidence and metadata conflicts
+      if (track.filenameConfidence !== undefined) {
+        const filename = track.path.split('/').pop() || 'Unknown';
+
+        if (track.filenameConfidence < 0.4) {
+          issues.push({
+            id: `low_confidence_${track.id}`,
+            type: 'warning',
+            category: 'Filename Parsing',
+            message: `Low confidence filename parsing`,
+            details: `Confidence: ${Math.round(track.filenameConfidence * 100)}% - Filename: ${filename}`,
+            trackId: track.id,
+            canAutoFix: false
+          });
+        } else if (track.filenameConfidence < 0.6) {
+          issues.push({
+            id: `medium_confidence_${track.id}`,
+            type: 'info',
+            category: 'Filename Parsing',
+            message: `Medium confidence filename parsing`,
+            details: `Confidence: ${Math.round(track.filenameConfidence * 100)}% - Consider reviewing metadata for: ${filename}`,
+            trackId: track.id,
+            canAutoFix: false
+          });
+        }
+
+        // Check for metadata conflicts (filename vs tags)
+        if (track.suggestedTitle && track.title && track.suggestedTitle !== track.title) {
+          const similarity = this.calculateTextSimilarity(track.suggestedTitle, track.title);
+          if (similarity < 0.7) {
+            issues.push({
+              id: `metadata_conflict_title_${track.id}`,
+              type: 'warning',
+              category: 'Metadata Conflicts',
+              message: `Title mismatch detected`,
+              details: `Filename suggests: "${track.suggestedTitle}" but tag shows: "${track.title}"`,
+              trackId: track.id,
+              canAutoFix: false
+            });
+          }
+        }
+
+        if (track.suggestedArtist && track.artist && track.suggestedArtist !== track.artist) {
+          const similarity = this.calculateTextSimilarity(track.suggestedArtist, track.artist);
+          if (similarity < 0.7) {
+            issues.push({
+              id: `metadata_conflict_artist_${track.id}`,
+              type: 'warning',
+              category: 'Metadata Conflicts',
+              message: `Artist mismatch detected`,
+              details: `Filename suggests: "${track.suggestedArtist}" but tag shows: "${track.artist}"`,
+              trackId: track.id,
+              canAutoFix: false
+            });
+          }
+        }
+      }
+
+      // Validate BPM range (catch analysis errors)
+      if (track.bpm && (track.bpm < 50 || track.bpm > 250)) {
+        const likelyCorrect = track.bpm < 50 ? track.bpm * 2 : track.bpm / 2;
+        issues.push({
+          id: `invalid_bpm_${track.id}`,
+          type: 'warning',
+          category: 'Analysis Quality',
+          message: `Unusual BPM detected: ${track.bpm}`,
+          details: `Track: ${track.title || 'Unknown'} - Consider re-analysis (possibly ${likelyCorrect} BPM)`,
+          trackId: track.id,
+          canAutoFix: true
+        });
+      }
+
       // Check for missing analysis
       const analyses = this.db.getAnalysesByTrack(track.id);
       const hasTempoAnalysis = analyses.some(a => a.analyzerName === 'tempo' && a.status === 'completed');
@@ -1234,6 +1306,24 @@ export class CleanCueEngine {
     }
 
     return issues;
+  }
+
+  private calculateTextSimilarity(str1: string, str2: string): number {
+    if (!str1 || !str2) return 0;
+
+    const s1 = str1.toLowerCase().trim();
+    const s2 = str2.toLowerCase().trim();
+
+    if (s1 === s2) return 1;
+
+    // Simple word-based similarity
+    const words1 = new Set(s1.split(/\s+/));
+    const words2 = new Set(s2.split(/\s+/));
+
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
+
+    return intersection.size / union.size;
   }
 
   async scanLibraryHealth(): Promise<{ success: boolean; issuesFound: number }> {

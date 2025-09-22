@@ -34,6 +34,15 @@ export interface Track {
   energy?: number;
   danceability?: number;
   valence?: number;
+
+  // Filename intelligence (from enhanced metadata worker)
+  filenameConfidence?: number;  // 0-1 confidence in filename parsing
+  filenamePattern?: string;     // Detected pattern identifier
+  suggestedTitle?: string;      // Title extracted from filename
+  suggestedArtist?: string;     // Artist extracted from filename
+  suggestedRemixer?: string;    // Remixer from filename
+  metadataQuality?: 'excellent' | 'good' | 'poor' | 'missing';
+  needsReview?: boolean;        // Flag for manual review needed
 }
 
 export interface Analysis {
