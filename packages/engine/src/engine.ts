@@ -44,6 +44,9 @@ export class CleanCueEngine {
 
   async initialize(): Promise<void> {
     await this.db.initialize();
+
+    // Clean up orphaned records to ensure database consistency
+    this.db.cleanupOrphanedRecords();
   }
 
   private setupEventHandlers() {

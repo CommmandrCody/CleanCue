@@ -58,25 +58,35 @@ class CleanCueApp {
           engineSource = 'node_modules';
           console.log('✅ Engine loaded from node_modules');
         } catch (error) {
-          console.log('❌ Failed to load engine from node_modules:', error.message);
+          console.log('❌ Failed to load engine from node_modules:', (error as Error).message);
 
           try {
-            // Try 2: Load from extraResources in production
-            const enginePath = path.join(process.resourcesPath, 'engine', 'dist', 'engine.js');
-            CleanCueEngine = require(enginePath).CleanCueEngine;
-            engineSource = 'extraResources';
-            console.log('✅ Engine loaded from extraResources');
-          } catch (resourceError) {
-            console.log('❌ Failed to load engine from extraResources:', resourceError.message);
+            // Try 2: Development fallback - direct from packages
+            const devEnginePath = path.resolve(__dirname, '../../../packages/engine/dist/engine.js');
+            CleanCueEngine = require(devEnginePath).CleanCueEngine;
+            engineSource = 'development';
+            console.log('✅ Engine loaded from development packages');
+          } catch (devError) {
+            console.log('❌ Failed to load engine from development packages:', (devError as Error).message);
 
             try {
-              // Try 3: BULLETPROOF FALLBACK - Embedded engine (always works)
-              CleanCueEngine = require('./embedded-engine.js').CleanCueEngine;
-              engineSource = 'embedded';
-              console.log('✅ Engine loaded from embedded fallback - SCAN WILL WORK');
-            } catch (embeddedError) {
-              console.error('❌ CRITICAL: Even embedded engine failed:', embeddedError);
-              throw new Error('Complete engine failure - this should never happen');
+              // Try 3: Load from extraResources in production
+              const enginePath = path.join(process.resourcesPath, 'engine', 'dist', 'engine.js');
+              CleanCueEngine = require(enginePath).CleanCueEngine;
+              engineSource = 'extraResources';
+              console.log('✅ Engine loaded from extraResources');
+            } catch (resourceError) {
+              console.log('❌ Failed to load engine from extraResources:', (resourceError as Error).message);
+
+              try {
+                // Try 4: BULLETPROOF FALLBACK - Embedded engine (always works)
+                CleanCueEngine = require('./embedded-engine.js').CleanCueEngine;
+                engineSource = 'embedded';
+                console.log('✅ Engine loaded from embedded fallback - SCAN WILL WORK');
+              } catch (embeddedError) {
+                console.error('❌ CRITICAL: Even embedded engine failed:', embeddedError);
+                throw new Error('Complete engine failure - this should never happen');
+              }
             }
           }
         }

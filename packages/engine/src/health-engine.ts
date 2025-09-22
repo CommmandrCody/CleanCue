@@ -1073,20 +1073,32 @@ export class HealthEngine extends EventEmitter {
     autoFixAction?: string;
     suggestion?: string;
   }>> {
-    const result = await this.scanHealth();
-    return result.issues.map(issue => ({
-      id: issue.id,
-      type: issue.type === 'critical' ? 'error' as const :
-            issue.type === 'quality' ? 'warning' as const :
-            'info' as const,
-      category: issue.category,
-      message: issue.title,
-      details: issue.description,
-      trackId: issue.affectedTracks[0],
-      canAutoFix: issue.autoFixAvailable,
-      autoFixAction: issue.fixFunction,
-      suggestion: issue.suggestion
-    }));
+    try {
+      const result = await this.scanHealth();
+
+      // Defensive programming: ensure issues is an array
+      if (!result || !Array.isArray(result.issues)) {
+        console.warn('[HEALTH] scanHealth returned invalid result:', result);
+        return [];
+      }
+
+      return result.issues.map(issue => ({
+        id: issue.id,
+        type: issue.type === 'critical' ? 'error' as const :
+              issue.type === 'quality' ? 'warning' as const :
+              'info' as const,
+        category: issue.category,
+        message: issue.title,
+        details: issue.description,
+        trackId: issue.affectedTracks?.[0],
+        canAutoFix: issue.autoFixAvailable,
+        autoFixAction: issue.fixFunction,
+        suggestion: issue.suggestion
+      }));
+    } catch (error) {
+      console.error('[HEALTH] runHealthCheck failed:', error);
+      return [];
+    }
   }
 
   async autoFix(issueId: string, engine: any): Promise<{ success: boolean; message: string }> {

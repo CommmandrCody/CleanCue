@@ -118,6 +118,17 @@ export class CleanCueDatabase {
         energy REAL,
         danceability REAL,
         valence REAL,
+        filename_confidence REAL,
+        filename_pattern TEXT,
+        suggested_title TEXT,
+        suggested_artist TEXT,
+        suggested_remixer TEXT,
+        metadata_quality TEXT,
+        needs_review INTEGER,
+        is_dj_set INTEGER,
+        dj_set_type TEXT,
+        dj_set_confidence REAL,
+        dj_set_reason TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -241,6 +252,17 @@ export class CleanCueDatabase {
         track.energy || null,
         track.danceability || null,
         track.valence || null,
+        track.filenameConfidence || null,
+        track.filenamePattern || null,
+        track.suggestedTitle || null,
+        track.suggestedArtist || null,
+        track.suggestedRemixer || null,
+        track.metadataQuality || null,
+        track.needsReview ? 1 : 0,
+        track.isDjSet ? 1 : 0,
+        track.djSetType || null,
+        track.djSetConfidence || null,
+        track.djSetReason || null,
         now,
         now
       ];
@@ -253,8 +275,11 @@ export class CleanCueDatabase {
           id, path, hash, filename, extension, size_bytes, file_modified_at,
           title, artist, album, album_artist, genre, year, track_number, disc_number,
           composer, comment, duration_ms, bitrate, sample_rate, channels,
-          bpm, key, energy, danceability, valence, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          bpm, key, energy, danceability, valence, filename_confidence, filename_pattern,
+          suggested_title, suggested_artist, suggested_remixer, metadata_quality,
+          needs_review, is_dj_set, dj_set_type, dj_set_confidence, dj_set_reason,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, safeValues);
       console.log(`[DATABASE] SQL insert completed successfully`);
 
@@ -395,9 +420,24 @@ export class CleanCueDatabase {
   deleteTrack(id: string): boolean {
     this.ensureInitialized();
 
+    console.log(`[DATABASE] Cascading delete for track: ${id}`);
+
+    // Delete all related records first (cascading delete)
+    this.db!.run('DELETE FROM stem_separations WHERE track_id = ?', [id]);
+    console.log(`[DATABASE] Deleted stem_separations for track: ${id}`);
+
+    this.db!.run('DELETE FROM cue_points WHERE track_id = ?', [id]);
+    console.log(`[DATABASE] Deleted cue_points for track: ${id}`);
+
+    this.db!.run('DELETE FROM analyses WHERE track_id = ?', [id]);
+    console.log(`[DATABASE] Deleted analyses for track: ${id}`);
+
+    // Finally delete the track itself
     this.db!.run('DELETE FROM tracks WHERE id = ?', [id]);
+    console.log(`[DATABASE] Deleted track: ${id}`);
+
     this.saveDatabase();
-    return true; // sql.js doesn't provide changes count easily
+    return true;
   }
 
   private rowToTrack(row: any): Track {
@@ -428,6 +468,17 @@ export class CleanCueDatabase {
       energy: row.energy,
       danceability: row.danceability,
       valence: row.valence,
+      filenameConfidence: row.filename_confidence,
+      filenamePattern: row.filename_pattern,
+      suggestedTitle: row.suggested_title,
+      suggestedArtist: row.suggested_artist,
+      suggestedRemixer: row.suggested_remixer,
+      metadataQuality: row.metadata_quality,
+      needsReview: row.needs_review === 1,
+      isDjSet: row.is_dj_set === 1,
+      djSetType: row.dj_set_type,
+      djSetConfidence: row.dj_set_confidence,
+      djSetReason: row.dj_set_reason,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };
@@ -774,6 +825,40 @@ export class CleanCueDatabase {
     this.db!.run('DELETE FROM stem_separations WHERE id = ?', [id]);
     this.saveDatabase();
     return true; // sql.js doesn't provide changes count easily
+  }
+
+  /**
+   * Clean up orphaned records that reference non-existent tracks
+   * Should be called on application startup
+   */
+  cleanupOrphanedRecords(): void {
+    this.ensureInitialized();
+
+    console.log('[DATABASE] Starting orphaned records cleanup...');
+
+    // Clean up orphaned stem_separations
+    const orphanedStems = this.db!.exec(`
+      DELETE FROM stem_separations
+      WHERE track_id NOT IN (SELECT id FROM tracks)
+    `);
+    console.log(`[DATABASE] Cleaned up orphaned stem_separations`);
+
+    // Clean up orphaned cue_points
+    const orphanedCues = this.db!.exec(`
+      DELETE FROM cue_points
+      WHERE track_id NOT IN (SELECT id FROM tracks)
+    `);
+    console.log(`[DATABASE] Cleaned up orphaned cue_points`);
+
+    // Clean up orphaned analyses
+    const orphanedAnalyses = this.db!.exec(`
+      DELETE FROM analyses
+      WHERE track_id NOT IN (SELECT id FROM tracks)
+    `);
+    console.log(`[DATABASE] Cleaned up orphaned analyses`);
+
+    this.saveDatabase();
+    console.log('[DATABASE] Orphaned records cleanup completed');
   }
 
   close(): void {
