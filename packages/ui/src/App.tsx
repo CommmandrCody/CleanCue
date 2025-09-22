@@ -37,6 +37,7 @@ function AppContent() {
   const [logViewerHeight] = useState(200)
   const [showHelp, setShowHelp] = useState(false)
   const [appReady, setAppReady] = useState(false)
+  const [libraryRefreshKey, setLibraryRefreshKey] = useState(0)
 
   // Audio player state
   const [currentPlaylist, setCurrentPlaylist] = useState<Track[]>([])
@@ -57,6 +58,11 @@ function AppContent() {
     setShowPlayer(false)
     setCurrentPlaylist([])
     setCurrentTrackIndex(0)
+  }
+
+  const handleLibraryRefresh = () => {
+    console.log('[App] Triggering library refresh')
+    setLibraryRefreshKey(prev => prev + 1)
   }
 
   // Initialize app and ensure engine is ready
@@ -160,7 +166,7 @@ function AppContent() {
 
     switch (currentView) {
       case 'library':
-        return <LibraryView onPlayTrack={handlePlayTrack} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
       case 'health':
         return <HealthDashboard />
       case 'duplicates':
@@ -168,7 +174,7 @@ function AppContent() {
       case 'analysis':
         return <AnalysisProgress />
       default:
-        return <LibraryView onPlayTrack={handlePlayTrack} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
     }
   }
 
@@ -219,6 +225,7 @@ function AppContent() {
         <LibraryImport
           isOpen={showImport}
           onClose={() => setShowImport(false)}
+          onImportComplete={handleLibraryRefresh}
         />
       )}
 

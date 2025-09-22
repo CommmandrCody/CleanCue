@@ -52,6 +52,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   })
 
   useEffect(() => {
+    console.log('[LibraryView] Component mounted, loading tracks')
     loadTracks()
   }, [])
 
@@ -473,7 +474,8 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
       {viewMode === 'compact' ? (
         /* Compact List View */
         <div className="bg-gray-800 rounded-lg overflow-hidden">
-          <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300">
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300 min-w-[800px]">
             <div className="col-span-1">✓</div>
             <div className="col-span-1">▶</div>
             <div className="col-span-1"></div>
@@ -484,18 +486,18 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
             <div className="col-span-1">⚡</div>
           </div>
 
-          <div className="divide-y divide-gray-700">
-            {loading ? (
-              <div className="text-center py-8 text-gray-400">
-                <Music className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
-                <p className="text-sm">Loading tracks...</p>
-              </div>
-            ) : filteredTracks.map((track) => (
+            <div className="divide-y divide-gray-700">
+              {loading ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Music className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
+                  <p className="text-sm">Loading tracks...</p>
+                </div>
+              ) : filteredTracks.map((track) => (
               <React.Fragment key={track.id}>
                 {/* Main Track Row */}
                 <div
                   className={clsx(
-                    'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm',
+                    'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm min-w-[800px]',
                     selectedTracks.includes(track.id) && 'bg-primary-900/20'
                   )}
                 >
@@ -523,7 +525,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                       <button
                         onClick={() => toggleTrackExpansion(track.id)}
                         className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
-                        title={expandedTracks.includes(track.id) ? "Hide stems" : "Show stems"}
+                        title={expandedTracks.includes(track.id) ? "Hide stem files (vocals, drums, bass, etc.)" : "Show available stem files (vocals, drums, bass, etc.)"}
                       >
                         {expandedTracks.includes(track.id) ? (
                           <ChevronDown className="h-3 w-3" />
@@ -532,11 +534,11 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                         )}
                       </button>
                     ) : track.stemSeparation && track.stemSeparation.status === 'processing' ? (
-                      <div className="flex items-center">
+                      <div className="flex items-center" title="Stem separation in progress - extracting vocals, drums, bass, and other instruments">
                         <Layers className="h-3 w-3 text-yellow-400 animate-pulse" />
                       </div>
                     ) : track.stemSeparation && track.stemSeparation.status === 'pending' ? (
-                      <div className="flex items-center">
+                      <div className="flex items-center" title="Stem separation queued - will extract vocals, drums, bass, and other instruments">
                         <Layers className="h-3 w-3 text-gray-500" />
                       </div>
                     ) : (
@@ -549,8 +551,11 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                       <div className="font-medium truncate text-sm flex items-center">
                         {track.title}
                         {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 && (
-                          <span className="ml-2 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
-                            STEMS
+                          <span
+                            className="ml-2 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300"
+                            title={`${track.stemSeparation.stems.length} stems available: ${track.stemSeparation.stems.map(s => s.type).join(', ')}`}
+                          >
+                            {track.stemSeparation.stems.length} STEMS
                           </span>
                         )}
                       </div>
@@ -639,6 +644,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
               )}
             </div>
           )}
+          </div>
         </div>
       ) : (
         /* Grid View */

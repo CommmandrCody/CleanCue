@@ -23,9 +23,10 @@ interface ImportSettings {
 interface LibraryImportProps {
   isOpen: boolean
   onClose: () => void
+  onImportComplete?: () => void
 }
 
-export function LibraryImport({ isOpen, onClose }: LibraryImportProps) {
+export function LibraryImport({ isOpen, onClose, onImportComplete }: LibraryImportProps) {
   const [sources, setSources] = useState<ImportSource[]>([])
   const [settings, setSettings] = useState<ImportSettings>({
     mode: 'copy',
@@ -178,6 +179,15 @@ export function LibraryImport({ isOpen, onClose }: LibraryImportProps) {
 
       // Clear sources and close dialog on success
       setSources([])
+
+      // Trigger library refresh before closing
+      if (onImportComplete) {
+        console.log('[LibraryImport] Triggering library refresh after successful import')
+        // Give the backend a moment to finish updating the database
+        await new Promise(resolve => setTimeout(resolve, 500))
+        onImportComplete()
+      }
+
       onClose()
     } catch (error) {
       console.error('Import failed:', error)
