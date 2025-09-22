@@ -43,6 +43,12 @@ export interface Track {
   suggestedRemixer?: string;    // Remixer from filename
   metadataQuality?: 'excellent' | 'good' | 'poor' | 'missing';
   needsReview?: boolean;        // Flag for manual review needed
+
+  // DJ set detection (for huge unwieldy tracks)
+  isDjSet?: boolean;           // Detected as a DJ set/mix
+  djSetType?: 'mix' | 'set' | 'podcast' | 'radio_show' | 'live_set'; // Type of DJ content
+  djSetConfidence?: number;    // 0-1 confidence in DJ set detection
+  djSetReason?: string;        // Why it was flagged as a DJ set
 }
 
 export interface Analysis {

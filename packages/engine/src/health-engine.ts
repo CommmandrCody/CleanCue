@@ -234,6 +234,18 @@ export class HealthEngine extends EventEmitter {
       priority: 3,
       check: this.checkDuplicates.bind(this)
     });
+
+    this.registerRule({
+      id: 'dj_set_detection',
+      name: 'Unwieldy DJ Set Detection',
+      category: 'DJ Workflow',
+      type: 'enhancement',
+      workflow: 'dj',
+      enabled: true,
+      priority: 6,
+      check: this.checkDJSetDetection.bind(this),
+      autoFix: this.fixDJSetDetection.bind(this)
+    });
   }
 
   /**
@@ -815,6 +827,190 @@ export class HealthEngine extends EventEmitter {
   }
 
   /**
+   * Detect unwieldy DJ sets from YouTube and other sources
+   */
+  private async checkDJSetDetection(context: HealthCheckContext): Promise<HealthIssue[]> {
+    const issues: HealthIssue[] = [];
+
+    // DJ set detection keywords and patterns
+    const djSetKeywords = [
+      'mix', 'set', 'dj', 'podcast', 'radio show', 'live set', 'mixtape',
+      'compilation', 'essential mix', 'guest mix', 'warm up', 'closing set',
+      'live from', 'recorded at', 'session', 'mix series', 'radio 1',
+      'bbc', 'boiler room', 'fabriclive', 'mixed by', 'presents',
+      'continuous mix', 'non stop', 'megamix', 'mixed set'
+    ];
+
+    const djSetPatterns = [
+      /\b\d{1,2}[:\-]\d{2}[:\-]\d{2}\b/,  // Duration patterns like 1:23:45
+      /\bmix\s*#?\d+/i,                     // Mix numbers like "Mix #12"
+      /\bep\.\s*\d+/i,                      // Episode numbers
+      /\b\d{4}[.\-_]\d{1,2}[.\-_]\d{1,2}\b/, // Date patterns
+      /\blive\s+at\s+/i,                    // Live venue indicators
+      /\brecorded\s+live/i,                 // Live recordings
+      /\bwarm\s*up\s*set/i,                 // Warm up sets
+      /\bclosing\s*set/i,                   // Closing sets
+      /\b\d+\s*hour/i,                      // Duration mentions
+      /\bpart\s*[1-9]/i,                    // Multi-part mixes
+      /\bvolume\s*[1-9]/i                   // Volume series
+    ];
+
+    for (const track of context.tracks) {
+      // Skip if already flagged
+      if ((track as any).isDjSet) continue;
+
+      let confidence = 0;
+      let djSetType: 'mix' | 'set' | 'podcast' | 'radio_show' | 'live_set' = 'mix';
+      const reasons: string[] = [];
+
+      // Check duration (major indicator)
+      if (track.durationMs && track.durationMs > 15 * 60 * 1000) { // 15+ minutes
+        confidence += 0.4;
+        reasons.push(`Long duration: ${Math.round(track.durationMs / 60000)} minutes`);
+
+        if (track.durationMs > 30 * 60 * 1000) { // 30+ minutes
+          confidence += 0.3;
+          reasons.push('Very long duration (30+ min)');
+        }
+      }
+
+      // Analyze title and filename for DJ set indicators
+      const searchText = [
+        track.title,
+        track.filename,
+        track.artist,
+        track.album,
+        track.comment
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      // Check for DJ set keywords
+      let keywordMatches = 0;
+      for (const keyword of djSetKeywords) {
+        if (searchText.includes(keyword.toLowerCase())) {
+          keywordMatches++;
+          confidence += 0.15;
+
+          // Classify DJ set type based on keywords
+          if (['podcast', 'radio show', 'bbc', 'radio 1'].some(k => searchText.includes(k))) {
+            djSetType = 'podcast';
+          } else if (['live', 'boiler room', 'recorded at', 'live from'].some(k => searchText.includes(k))) {
+            djSetType = 'live_set';
+          } else if (['essential mix', 'guest mix', 'radio show'].some(k => searchText.includes(k))) {
+            djSetType = 'radio_show';
+          } else if (['set', 'closing set', 'warm up'].some(k => searchText.includes(k))) {
+            djSetType = 'set';
+          }
+        }
+      }
+
+      if (keywordMatches > 0) {
+        reasons.push(`Found ${keywordMatches} DJ set keyword(s)`);
+      }
+
+      // Check for patterns
+      let patternMatches = 0;
+      for (const pattern of djSetPatterns) {
+        if (pattern.test(searchText)) {
+          patternMatches++;
+          confidence += 0.1;
+        }
+      }
+
+      if (patternMatches > 0) {
+        reasons.push(`Matched ${patternMatches} DJ set pattern(s)`);
+      }
+
+      // Check for YouTube/streaming source indicators
+      const isFromYoutube = track.path.toLowerCase().includes('youtube') ||
+                           track.path.toLowerCase().includes('yt-dlp') ||
+                           searchText.includes('youtube');
+
+      if (isFromYoutube) {
+        confidence += 0.2;
+        reasons.push('Downloaded from YouTube');
+      }
+
+      // Check for multiple artists (compilations/mixes often have many)
+      if (track.artist && track.artist.includes(',') || track.artist?.includes('&') ||
+          track.artist?.includes('vs') || track.artist?.includes('feat')) {
+        confidence += 0.1;
+        reasons.push('Multiple artists detected');
+      }
+
+      // Filename analysis for mix indicators
+      const filename = track.filename.toLowerCase();
+      if (filename.includes('[') && filename.includes(']')) { // Bracketed info often indicates mixes
+        confidence += 0.1;
+        reasons.push('Bracketed metadata in filename');
+      }
+
+      // High confidence threshold for flagging
+      if (confidence >= 0.6) {
+        const suggestion = confidence >= 0.8 ?
+          'This track appears to be a DJ set/mix and should likely be flagged as unwieldy for normal DJ use' :
+          'This track may be a DJ set - review if it should be flagged as unwieldy for DJ workflows';
+
+        issues.push({
+          id: `dj_set_detected_${track.id}`,
+          ruleId: 'dj_set_detection',
+          type: 'enhancement',
+          category: 'DJ Workflow',
+          title: `Potential DJ Set: ${track.title || track.filename}`,
+          description: `Detected as ${djSetType} with ${Math.round(confidence * 100)}% confidence. ${reasons.join(', ')}.`,
+          impact: 'cosmetic',
+          affectedTracks: [track.id],
+          suggestion,
+          autoFixAvailable: true,
+          confidence,
+          priority: confidence >= 0.8 ? 7 : 5,
+          workflow: 'dj',
+          fixFunction: 'flagAsDJSet',
+          fixParams: {
+            trackId: track.id,
+            djSetType,
+            confidence,
+            reason: reasons.join(', ')
+          },
+          previewChanges: {
+            current: 'Normal track',
+            suggested: `Flagged as ${djSetType} (${Math.round(confidence * 100)}% confidence)`
+          },
+          createdAt: new Date()
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Auto-fix DJ set detection by flagging tracks
+   */
+  private async fixDJSetDetection(issue: HealthIssue, context: HealthCheckContext): Promise<boolean> {
+    try {
+      if (issue.fixFunction === 'flagAsDJSet' && issue.fixParams) {
+        const { trackId, djSetType, confidence, reason } = issue.fixParams;
+
+        // Update the track with DJ set flags
+        await context.db.updateTrack(trackId, {
+          isDjSet: true,
+          djSetType,
+          djSetConfidence: confidence,
+          djSetReason: reason,
+          needsReview: confidence < 0.8 // Flag for manual review if not highly confident
+        });
+
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to flag track as DJ set:', error);
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
    * Calculate text similarity (shared utility)
    */
   private calculateSimilarity(str1: string, str2: string): number {
@@ -935,6 +1131,15 @@ export class HealthEngine extends EventEmitter {
         };
       }
 
+      if (issue.fixFunction === 'flagAsDJSet') {
+        const context = await this.buildContext({});
+        const fixed = await this.fixDJSetDetection(issue, context);
+        return {
+          success: fixed,
+          message: fixed ? 'Track flagged as DJ set/mix' : 'Failed to flag track as DJ set'
+        };
+      }
+
       return { success: false, message: 'Unknown fix function' };
     } catch (error) {
       return {
@@ -969,6 +1174,8 @@ export class HealthEngine extends EventEmitter {
       actions.push('Resolve metadata conflicts', 'Update track metadata');
     } else if (issue.fixFunction === 'fixAnalysisValidation') {
       actions.push('Re-run failed analysis', 'Validate results');
+    } else if (issue.fixFunction === 'flagAsDJSet') {
+      actions.push('Flag track as DJ set/mix', 'Mark as unwieldy for normal DJ use');
     }
 
     return { success: true, preview, actions };

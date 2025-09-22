@@ -56,6 +56,13 @@ export interface AudioMetadata {
   bitrate?: number;
   sampleRate?: number;
   channels?: number;
+
+  // DJ set detection fields
+  isDjSet?: boolean;
+  djSetType?: 'mix' | 'set' | 'podcast' | 'radio_show' | 'live_set';
+  djSetConfidence?: number;
+  djSetReason?: string;
+  needsReview?: boolean;
 }
 
 export interface ScanConfig {
@@ -236,7 +243,7 @@ export class FileScanner {
       // Extract title and artist from filename if not available in metadata
       const filenameMetadata = this.extractMetadataFromFilename(filePath);
 
-      return {
+      const baseMetadata = {
         title: metadata.common.title || filenameMetadata.title,
         artist: metadata.common.artist || filenameMetadata.artist,
         album: metadata.common.album,
@@ -254,9 +261,22 @@ export class FileScanner {
         sampleRate: metadata.format.sampleRate,
         channels: metadata.format.numberOfChannels
       };
+
+      // Add DJ set detection
+      const djSetDetection = this.detectDJSet(baseMetadata, filePath);
+
+      return {
+        ...baseMetadata,
+        ...djSetDetection
+      };
     } catch (error) {
       console.warn(`Failed to extract metadata from ${filePath}:`, error);
-      return this.extractMetadataFromFilename(filePath);
+      const fallbackMetadata = this.extractMetadataFromFilename(filePath);
+      const djSetDetection = this.detectDJSet(fallbackMetadata, filePath);
+      return {
+        ...fallbackMetadata,
+        ...djSetDetection
+      };
     }
   }
 
@@ -314,6 +334,129 @@ export class FileScanner {
       title: title || filename,
       artist: artist
     };
+  }
+
+  private detectDJSet(metadata: AudioMetadata, filePath: string): Partial<AudioMetadata> {
+    // DJ set detection keywords and patterns
+    const djSetKeywords = [
+      'mix', 'set', 'dj', 'podcast', 'radio show', 'live set', 'mixtape',
+      'compilation', 'essential mix', 'guest mix', 'warm up', 'closing set',
+      'live from', 'recorded at', 'session', 'mix series', 'radio 1',
+      'bbc', 'boiler room', 'fabriclive', 'mixed by', 'presents',
+      'continuous mix', 'non stop', 'megamix', 'mixed set'
+    ];
+
+    const djSetPatterns = [
+      /\b\d{1,2}[:\-]\d{2}[:\-]\d{2}\b/,  // Duration patterns like 1:23:45
+      /\bmix\s*#?\d+/i,                     // Mix numbers like "Mix #12"
+      /\bep\.\s*\d+/i,                      // Episode numbers
+      /\b\d{4}[.\-_]\d{1,2}[.\-_]\d{1,2}\b/, // Date patterns
+      /\blive\s+at\s+/i,                    // Live venue indicators
+      /\brecorded\s+live/i,                 // Live recordings
+      /\bwarm\s*up\s*set/i,                 // Warm up sets
+      /\bclosing\s*set/i,                   // Closing sets
+      /\b\d+\s*hour/i,                      // Duration mentions
+      /\bpart\s*[1-9]/i,                    // Multi-part mixes
+      /\bvolume\s*[1-9]/i                   // Volume series
+    ];
+
+    let confidence = 0;
+    let djSetType: 'mix' | 'set' | 'podcast' | 'radio_show' | 'live_set' = 'mix';
+    const reasons: string[] = [];
+
+    // Check duration (major indicator)
+    if (metadata.durationMs && metadata.durationMs > 15 * 60 * 1000) { // 15+ minutes
+      confidence += 0.4;
+      reasons.push(`Long duration: ${Math.round(metadata.durationMs / 60000)} minutes`);
+
+      if (metadata.durationMs > 30 * 60 * 1000) { // 30+ minutes
+        confidence += 0.3;
+        reasons.push('Very long duration (30+ min)');
+      }
+    }
+
+    // Analyze title and filename for DJ set indicators
+    const filename = path.basename(filePath);
+    const searchText = [
+      metadata.title,
+      filename,
+      metadata.artist,
+      metadata.album,
+      metadata.comment
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    // Check for DJ set keywords
+    let keywordMatches = 0;
+    for (const keyword of djSetKeywords) {
+      if (searchText.includes(keyword.toLowerCase())) {
+        keywordMatches++;
+        confidence += 0.15;
+
+        // Classify DJ set type based on keywords
+        if (['podcast', 'radio show', 'bbc', 'radio 1'].some(k => searchText.includes(k))) {
+          djSetType = 'podcast';
+        } else if (['live', 'boiler room', 'recorded at', 'live from'].some(k => searchText.includes(k))) {
+          djSetType = 'live_set';
+        } else if (['essential mix', 'guest mix', 'radio show'].some(k => searchText.includes(k))) {
+          djSetType = 'radio_show';
+        } else if (['set', 'closing set', 'warm up'].some(k => searchText.includes(k))) {
+          djSetType = 'set';
+        }
+      }
+    }
+
+    if (keywordMatches > 0) {
+      reasons.push(`Found ${keywordMatches} DJ set keyword(s)`);
+    }
+
+    // Check for patterns
+    let patternMatches = 0;
+    for (const pattern of djSetPatterns) {
+      if (pattern.test(searchText)) {
+        patternMatches++;
+        confidence += 0.1;
+      }
+    }
+
+    if (patternMatches > 0) {
+      reasons.push(`Matched ${patternMatches} DJ set pattern(s)`);
+    }
+
+    // Check for YouTube/streaming source indicators
+    const isFromYoutube = filePath.toLowerCase().includes('youtube') ||
+                         filePath.toLowerCase().includes('yt-dlp') ||
+                         searchText.includes('youtube');
+
+    if (isFromYoutube) {
+      confidence += 0.2;
+      reasons.push('Downloaded from YouTube');
+    }
+
+    // Check for multiple artists (compilations/mixes often have many)
+    if (metadata.artist && (metadata.artist.includes(',') || metadata.artist?.includes('&') ||
+        metadata.artist?.includes('vs') || metadata.artist?.includes('feat'))) {
+      confidence += 0.1;
+      reasons.push('Multiple artists detected');
+    }
+
+    // Filename analysis for mix indicators
+    if (filename.toLowerCase().includes('[') && filename.toLowerCase().includes(']')) {
+      confidence += 0.1;
+      reasons.push('Bracketed metadata in filename');
+    }
+
+    // Return DJ set detection results if confidence is high enough
+    if (confidence >= 0.6) {
+      return {
+        isDjSet: true,
+        djSetType,
+        djSetConfidence: confidence,
+        djSetReason: reasons.join(', '),
+        needsReview: confidence < 0.8 // Flag for manual review if not highly confident
+      }
+    }
+
+    return {};
   }
 
   getSupportedExtensions(): string[] {

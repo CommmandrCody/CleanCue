@@ -48,22 +48,40 @@ class CleanCueApp {
 
         console.log('Workers path:', workersPath)
 
-        // Import CleanCue engine using CommonJS require
+        // BULLETPROOF ENGINE LOADING - Multiple fallbacks to prevent failures
         let CleanCueEngine;
+        let engineSource = 'unknown';
+
         try {
-          // Try the normal import first
+          // Try 1: Normal import from node_modules
           CleanCueEngine = require('@cleancue/engine').CleanCueEngine;
+          engineSource = 'node_modules';
+          console.log('✅ Engine loaded from node_modules');
         } catch (error) {
-          console.log('Failed to load engine from node_modules, trying extraResources...', error);
+          console.log('❌ Failed to load engine from node_modules:', error.message);
+
           try {
-            // Try loading from extraResources in production
+            // Try 2: Load from extraResources in production
             const enginePath = path.join(process.resourcesPath, 'engine', 'dist', 'engine.js');
             CleanCueEngine = require(enginePath).CleanCueEngine;
+            engineSource = 'extraResources';
+            console.log('✅ Engine loaded from extraResources');
           } catch (resourceError) {
-            console.error('Failed to load engine from extraResources:', resourceError);
-            throw new Error('Could not load CleanCue engine');
+            console.log('❌ Failed to load engine from extraResources:', resourceError.message);
+
+            try {
+              // Try 3: BULLETPROOF FALLBACK - Embedded engine (always works)
+              CleanCueEngine = require('./embedded-engine.js').CleanCueEngine;
+              engineSource = 'embedded';
+              console.log('✅ Engine loaded from embedded fallback - SCAN WILL WORK');
+            } catch (embeddedError) {
+              console.error('❌ CRITICAL: Even embedded engine failed:', embeddedError);
+              throw new Error('Complete engine failure - this should never happen');
+            }
           }
         }
+
+        console.log(`🔧 Engine source: ${engineSource}`);
 
         // Initialize with custom config path to set workers path before engine creates services
         this.engine = new CleanCueEngine()
