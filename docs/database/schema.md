@@ -42,17 +42,6 @@ CREATE TABLE IF NOT EXISTS tracks (
   energy REAL,
   danceability REAL,
   valence REAL,
-  filename_confidence REAL,
-  filename_pattern TEXT,
-  suggested_title TEXT,
-  suggested_artist TEXT,
-  suggested_remixer TEXT,
-  metadata_quality TEXT,
-  needs_review INTEGER,
-  is_dj_set INTEGER,
-  dj_set_type TEXT,
-  dj_set_confidence REAL,
-  dj_set_reason TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

@@ -118,17 +118,6 @@ export class CleanCueDatabase {
         energy REAL,
         danceability REAL,
         valence REAL,
-        filename_confidence REAL,
-        filename_pattern TEXT,
-        suggested_title TEXT,
-        suggested_artist TEXT,
-        suggested_remixer TEXT,
-        metadata_quality TEXT,
-        needs_review INTEGER,
-        is_dj_set INTEGER,
-        dj_set_type TEXT,
-        dj_set_confidence REAL,
-        dj_set_reason TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -252,17 +241,6 @@ export class CleanCueDatabase {
         track.energy || null,
         track.danceability || null,
         track.valence || null,
-        track.filenameConfidence || null,
-        track.filenamePattern || null,
-        track.suggestedTitle || null,
-        track.suggestedArtist || null,
-        track.suggestedRemixer || null,
-        track.metadataQuality || null,
-        track.needsReview ? 1 : 0,
-        track.isDjSet ? 1 : 0,
-        track.djSetType || null,
-        track.djSetConfidence || null,
-        track.djSetReason || null,
         now,
         now
       ];
@@ -275,11 +253,9 @@ export class CleanCueDatabase {
           id, path, hash, filename, extension, size_bytes, file_modified_at,
           title, artist, album, album_artist, genre, year, track_number, disc_number,
           composer, comment, duration_ms, bitrate, sample_rate, channels,
-          bpm, key, energy, danceability, valence, filename_confidence, filename_pattern,
-          suggested_title, suggested_artist, suggested_remixer, metadata_quality,
-          needs_review, is_dj_set, dj_set_type, dj_set_confidence, dj_set_reason,
+          bpm, key, energy, danceability, valence,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, safeValues);
       console.log(`[DATABASE] SQL insert completed successfully`);
 
@@ -468,17 +444,6 @@ export class CleanCueDatabase {
       energy: row.energy,
       danceability: row.danceability,
       valence: row.valence,
-      filenameConfidence: row.filename_confidence,
-      filenamePattern: row.filename_pattern,
-      suggestedTitle: row.suggested_title,
-      suggestedArtist: row.suggested_artist,
-      suggestedRemixer: row.suggested_remixer,
-      metadataQuality: row.metadata_quality,
-      needsReview: row.needs_review === 1,
-      isDjSet: row.is_dj_set === 1,
-      djSetType: row.dj_set_type,
-      djSetConfidence: row.dj_set_confidence,
-      djSetReason: row.dj_set_reason,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };

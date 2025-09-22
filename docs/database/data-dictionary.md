@@ -59,27 +59,6 @@ The main table storing music library metadata and analysis results.
 | `danceability` | REAL | Danceability score (0-1) | `0.92` |
 | `valence` | REAL | Musical positivity (0-1) | `0.73` |
 
-### Filename Intelligence
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `filename_confidence` | REAL | Confidence in filename parsing (0-1) | `0.85` |
-| `filename_pattern` | TEXT | Detected filename pattern | `"artist_dash_title"` |
-| `suggested_title` | TEXT | Title extracted from filename | `"Levels"` |
-| `suggested_artist` | TEXT | Artist extracted from filename | `"Avicii"` |
-| `suggested_remixer` | TEXT | Remixer extracted from filename | `"Original Mix"` |
-| `metadata_quality` | TEXT | Overall metadata quality assessment | `"excellent"`, `"good"`, `"poor"`, `"missing"` |
-| `needs_review` | INTEGER | Flag for manual review needed (0/1) | `1` (true) |
-
-### DJ Set Detection
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `is_dj_set` | INTEGER | Detected as DJ set/mix (0/1) | `1` (true) |
-| `dj_set_type` | TEXT | Type of DJ content | `"mix"`, `"set"`, `"podcast"`, `"radio_show"`, `"live_set"` |
-| `dj_set_confidence` | REAL | Detection confidence (0-1) | `0.87` |
-| `dj_set_reason` | TEXT | Explanation of detection | `"Long duration: 62 minutes, Found 3 DJ set keyword(s)"` |
-
 ## `analyses` Table
 
 Stores detailed analysis results from audio processing algorithms.

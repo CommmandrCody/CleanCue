@@ -143,13 +143,11 @@ WHERE metadata_quality IN ('poor', 'missing')
    OR needs_review = 1
 ORDER BY metadata_quality, title;
 
--- Filename intelligence suggestions
-SELECT filename, title, suggested_title,
-       artist, suggested_artist, filename_confidence
+-- Tracks with missing essential metadata
+SELECT filename, title, artist, album, bpm, key
 FROM tracks
-WHERE filename_confidence > 0.7
-  AND (title != suggested_title OR artist != suggested_artist)
-ORDER BY filename_confidence DESC;
+WHERE title IS NULL OR artist IS NULL OR bpm IS NULL
+ORDER BY filename;
 
 -- Missing essential metadata
 SELECT title, artist, album, year, genre
