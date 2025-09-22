@@ -14,9 +14,9 @@ interface HeaderProps {
 
 export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onStemQueue, showLogViewer, onToggleLogViewer }: HeaderProps) {
   return (
-    <header className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 px-6 py-4 shadow-lg drag-region">
+    <header className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 py-4 shadow-lg drag-region pt-8 px-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4 drag-region mac-window-controls-padding" style={{ paddingLeft: '100px' }}>
+        <div className="flex items-center space-x-4 drag-region">
           <div className="relative">
             <Disc className="h-10 w-10 text-blue-400 animate-pulse" />
             <div className="absolute inset-0 h-10 w-10 bg-blue-400/20 rounded-full blur-sm"></div>

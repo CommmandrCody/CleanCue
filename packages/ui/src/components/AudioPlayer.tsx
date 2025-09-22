@@ -23,7 +23,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [volume, setVolume] = useState(1)
+  const [volume, setVolume] = useState(0.3)
   const [isMuted, setIsMuted] = useState(false)
 
   const currentTrack = tracks[currentTrackIndex]
@@ -46,9 +46,20 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('ended', handleEnded)
 
-    // Load new track - use proper file path for Electron
-    audio.src = currentTrack.path
+    // Load new track - use proper file URL for Electron
+    audio.src = `file://${currentTrack.path}`
     audio.load()
+
+    // Auto-play when track changes - but wait for canplay event
+    const handleCanPlay = () => {
+      audio.play().then(() => {
+        setIsPlaying(true)
+      }).catch(() => {
+        setIsPlaying(false)
+      })
+      audio.removeEventListener('canplay', handleCanPlay)
+    }
+    audio.addEventListener('canplay', handleCanPlay)
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate)
