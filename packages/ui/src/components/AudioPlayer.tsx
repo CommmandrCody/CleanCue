@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Eye, EyeOff } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 // import { AudioVisualizer, VisualizerControls } from './AudioVisualizer'
 
 interface Track {
@@ -25,9 +25,6 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
-  const [showVisualizer, setShowVisualizer] = useState(true)
-  // const [visualizerType, setVisualizerType] = useState<'bars' | 'wave' | 'circular' | 'waveform'>('bars')
-  // const [visualizerColor, setVisualizerColor] = useState('#3b82f6')
 
   const currentTrack = tracks[currentTrackIndex]
 
@@ -130,27 +127,6 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
     <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 z-50">
       <audio ref={audioRef} />
 
-      {/* Visualizer Section - Temporarily disabled for build */}
-      {showVisualizer && (
-        <div className="border-b border-gray-700 p-4">
-          <div className="max-w-screen-xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-300">Audio Visualizer</h3>
-              <button
-                onClick={() => setShowVisualizer(false)}
-                className="p-1 text-gray-400 hover:text-white transition-colors"
-                title="Hide visualizer"
-              >
-                <EyeOff className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-center h-32 bg-gray-800 rounded-lg">
-              <span className="text-gray-500">Visualizer temporarily disabled</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Player Controls */}
       <div className="p-4">
@@ -220,16 +196,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
 
             {/* Volume and Controls */}
             <div className="flex items-center space-x-2">
-              {/* Visualizer Toggle */}
-              <button
-                onClick={() => setShowVisualizer(!showVisualizer)}
-                className="p-2 text-gray-400 hover:text-white transition-colors"
-                title={showVisualizer ? "Hide visualizer" : "Show visualizer"}
-              >
-                {showVisualizer ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-
-              {/* Volume */}
+              {/* Volume */
               <button
                 onClick={toggleMute}
                 className="p-2 text-gray-400 hover:text-white transition-colors"
