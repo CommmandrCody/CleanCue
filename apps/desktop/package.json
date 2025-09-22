@@ -70,6 +70,26 @@
     ],
     "extraResources": [
       {
+        "from": "../../packages/engine",
+        "to": "engine",
+        "filter": [
+          "**/*",
+          "!node_modules/**",
+          "!**/*.test.*",
+          "!**/*.spec.*"
+        ]
+      },
+      {
+        "from": "../../packages/shared",
+        "to": "shared",
+        "filter": [
+          "**/*",
+          "!node_modules/**",
+          "!**/*.test.*",
+          "!**/*.spec.*"
+        ]
+      },
+      {
         "from": "../../packages/workers",
         "to": "workers",
         "filter": [

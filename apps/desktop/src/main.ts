@@ -49,7 +49,21 @@ class CleanCueApp {
         console.log('Workers path:', workersPath)
 
         // Import CleanCue engine using CommonJS require
-        const { CleanCueEngine } = require('@cleancue/engine')
+        let CleanCueEngine;
+        try {
+          // Try the normal import first
+          CleanCueEngine = require('@cleancue/engine').CleanCueEngine;
+        } catch (error) {
+          console.log('Failed to load engine from node_modules, trying extraResources...', error);
+          try {
+            // Try loading from extraResources in production
+            const enginePath = path.join(process.resourcesPath, 'engine', 'dist', 'engine.js');
+            CleanCueEngine = require(enginePath).CleanCueEngine;
+          } catch (resourceError) {
+            console.error('Failed to load engine from extraResources:', resourceError);
+            throw new Error('Could not load CleanCue engine');
+          }
+        }
 
         // Initialize with custom config path to set workers path before engine creates services
         this.engine = new CleanCueEngine()
