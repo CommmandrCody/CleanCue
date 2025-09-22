@@ -476,13 +476,13 @@ class CleanCueApp {
           {
             label: 'Documentation',
             click: async () => {
-              await shell.openExternal('https://docs.cleancue.cmndrcody.com')
+              await shell.openExternal('https://github.com/CmndrCody/CleanCue/wiki')
             }
           },
           {
             label: 'User Guide',
             click: async () => {
-              await shell.openExternal('https://docs.cleancue.cmndrcody.com/user-guide')
+              await shell.openExternal('https://github.com/CmndrCody/CleanCue#readme')
             }
           },
           {
@@ -1265,7 +1265,7 @@ Features:
 • YouTube downloader integration
 
 For documentation and support:
-https://docs.cleancue.cmndrcody.com`
+https://github.com/CmndrCody/CleanCue`
     })
   }
 
