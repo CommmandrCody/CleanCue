@@ -152,7 +152,7 @@ export function StemSeparation() {
         if (response.success) {
           setSettings(response.settings)
         } else {
-          throw new Error(response.error || 'Failed to load settings')
+          throw new Error((response as any).error || 'Failed to load settings')
         }
       }
     } catch (error) {
@@ -214,7 +214,7 @@ export function StemSeparation() {
           })
           setTracks(stemTracks)
         } else {
-          throw new Error(tracksResponse.error || 'Failed to load tracks')
+          throw new Error((tracksResponse as any).error || 'Failed to load tracks')
         }
       }
     } catch (error) {
@@ -242,7 +242,7 @@ export function StemSeparation() {
         for (const trackId of selectedTracks) {
           const response = await window.electronAPI.stemStartSeparation(trackId, settings)
           if (!response.success) {
-            console.error(`Failed to start separation for track ${trackId}:`, response.error)
+            console.error(`Failed to start separation for track ${trackId}:`, (response as any).error)
           }
         }
         await loadTracks() // Reload to get updated status
@@ -299,7 +299,7 @@ export function StemSeparation() {
           if (deleteResponse.success) {
             await loadTracks()
           } else {
-            console.error('Failed to delete stems:', deleteResponse.error)
+            console.error('Failed to delete stems:', (deleteResponse as any).error)
           }
         }
       }

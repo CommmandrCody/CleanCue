@@ -177,6 +177,64 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     return 'text-green-400'
   }
 
+  // 🎧 DJ HARMONIC MIXING - Professional Key Compatibility
+  const getHarmonicCompatibility = (trackKey: string, targetKey: string): 'perfect' | 'good' | 'caution' | 'clash' => {
+    if (!trackKey || !targetKey) return 'caution'
+
+    const track1Camelot = keyToCamelot(trackKey)
+    const track2Camelot = keyToCamelot(targetKey)
+
+    if (!track1Camelot || !track2Camelot) return 'caution'
+
+    // Extract number and letter from Camelot notation (e.g., "8A" -> num: 8, mode: "A")
+    const track1Num = parseInt(track1Camelot)
+    const track1Mode = track1Camelot.slice(-1)
+    const track2Num = parseInt(track2Camelot)
+    const track2Mode = track2Camelot.slice(-1)
+
+    // Perfect matches - same key or relative major/minor
+    if (track1Camelot === track2Camelot) return 'perfect'
+    if (track1Num === track2Num && track1Mode !== track2Mode) return 'perfect'
+
+    // Good matches - adjacent keys (±1 on wheel)
+    const adjacentKeys = [
+      ((track1Num % 12) + 1).toString() + track1Mode,
+      ((track1Num + 10) % 12 + 1).toString() + track1Mode
+    ]
+    if (adjacentKeys.includes(track2Camelot)) return 'good'
+
+    // Caution - 2 steps away or mode mismatch with adjacent
+    const cautionKeys = [
+      ((track1Num % 12) + 1).toString() + (track1Mode === 'A' ? 'B' : 'A'),
+      ((track1Num + 10) % 12 + 1).toString() + (track1Mode === 'A' ? 'B' : 'A')
+    ]
+    if (cautionKeys.includes(track2Camelot)) return 'caution'
+
+    return 'clash'
+  }
+
+  // 🎧 BPM MATCHING - Professional Tempo Compatibility
+  const getBpmCompatibility = (bpm1: number, bpm2: number): 'perfect' | 'good' | 'stretch' | 'difficult' => {
+    if (!bpm1 || !bpm2) return 'difficult'
+
+    const ratio = Math.max(bpm1, bpm2) / Math.min(bpm1, bpm2)
+
+    if (ratio <= 1.02) return 'perfect' // Within 2%
+    if (ratio <= 1.06) return 'good'    // Within 6%
+    if (ratio <= 1.12) return 'stretch' // Within 12% - pitch riding needed
+    return 'difficult'                  // Requires major tempo adjustment
+  }
+
+  // 🎧 ENERGY PROGRESSION - Smart Energy Flow Analysis
+  // const getEnergyProgression = (currentEnergy: number, nextEnergy: number): 'perfect' | 'build' | 'drop' | 'clash' => {
+  //   if (!currentEnergy || !nextEnergy) return 'clash'
+  //   const diff = nextEnergy - currentEnergy
+  //   if (Math.abs(diff) <= 5) return 'perfect'  // Smooth flow
+  //   if (diff > 5 && diff <= 15) return 'build' // Energy building
+  //   if (diff < -5 && diff >= -15) return 'drop' // Controlled drop
+  //   return 'clash'                              // Too dramatic
+  // }
+
   const keyToCamelot = (key: string): string => {
     if (!key) return ''
 
@@ -300,6 +358,72 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     }
   }
 
+  // 🎧 SMART MIX GENERATION - Professional DJ Mix Creator
+  const generateSmartMix = () => {
+    if (selectedTracks.length < 2) {
+      alert('Select at least 2 tracks to generate a smart mix')
+      return
+    }
+
+    // Get selected track objects with analysis data
+    const selectedTrackObjects = filteredTracks.filter(track => selectedTracks.includes(track.id))
+    const analyzedTracks = selectedTrackObjects.filter(track => track.bpm && track.key && track.energy)
+
+    if (analyzedTracks.length < 2) {
+      alert('At least 2 tracks need BPM, Key, and Energy analysis for smart mixing')
+      return
+    }
+
+    console.log('🎧 GENERATING SMART DJ MIX...')
+
+    // Smart mix algorithm using harmonic mixing and energy progression
+    const sortedTracks = [...analyzedTracks].sort((a, b) => {
+      // Primary sort: Energy (for flow)
+      const energyDiff = a.energy! - b.energy!
+      if (Math.abs(energyDiff) > 5) return energyDiff
+
+      // Secondary sort: BPM compatibility
+      const bpmDiff = a.bpm! - b.bpm!
+      return bpmDiff
+    })
+
+    // Calculate mix compatibility score
+    let totalCompatibility = 0
+    let harmonicMatches = 0
+    let bpmMatches = 0
+
+    for (let i = 0; i < sortedTracks.length - 1; i++) {
+      const current = sortedTracks[i]
+      const next = sortedTracks[i + 1]
+
+      // Check harmonic compatibility
+      const harmonicComp = getHarmonicCompatibility(current.key!, next.key!)
+      if (harmonicComp === 'perfect' || harmonicComp === 'good') harmonicMatches++
+
+      // Check BPM compatibility
+      const bpmComp = getBpmCompatibility(current.bpm!, next.bpm!)
+      if (bpmComp === 'perfect' || bpmComp === 'good') bpmMatches++
+    }
+
+    totalCompatibility = ((harmonicMatches + bpmMatches) / ((sortedTracks.length - 1) * 2)) * 100
+
+    // Display smart mix results
+    const mixSummary = `🎧 SMART MIX GENERATED
+
+Tracks: ${sortedTracks.length}
+Harmonic Matches: ${harmonicMatches}/${sortedTracks.length - 1}
+BPM Matches: ${bpmMatches}/${sortedTracks.length - 1}
+Overall Compatibility: ${Math.round(totalCompatibility)}%
+
+Track Order:
+${sortedTracks.map((track, i) =>
+  `${i + 1}. ${track.artist} - ${track.title} (${track.bpm} BPM, ${keyDisplayMode === 'camelot' ? track.camelotKey : track.key}, Energy: ${track.energy})`
+).join('\n')}`
+
+    alert(mixSummary)
+    console.log('🎧 Smart Mix Results:', { sortedTracks, harmonicMatches, bpmMatches, totalCompatibility })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -323,6 +447,22 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* DJ Analysis Stats */}
+          <div className="hidden lg:flex items-center space-x-4 text-xs">
+            <div className="flex items-center space-x-1 text-green-400">
+              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+              <span>{tracks.filter(t => t.bpm && t.key && t.energy).length} DJ Ready</span>
+            </div>
+            <div className="flex items-center space-x-1 text-yellow-400">
+              <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+              <span>{tracks.filter(t => (t.bpm || t.key) && !(t.bpm && t.key && t.energy)).length} Partial</span>
+            </div>
+            <div className="flex items-center space-x-1 text-red-400">
+              <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+              <span>{tracks.filter(t => !t.bpm && !t.key).length} Unanalyzed</span>
+            </div>
+          </div>
+
           {/* Key Display Mode Toggle */}
           <div className="flex bg-gray-700 rounded-md p-1">
             <button
@@ -437,6 +577,22 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
             <Download className="h-4 w-4 inline mr-2" />
             Export ({selectedTracks.length})
           </button>
+
+          {/* 🎧 DJ SMART PLAYLIST - Professional Mix Generation */}
+          <button
+            onClick={() => generateSmartMix()}
+            disabled={selectedTracks.length === 0}
+            className={clsx(
+              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              selectedTracks.length > 0
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white'
+                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            )}
+            title="Generate smart DJ mix with harmonic and energy flow analysis"
+          >
+            <Zap className="h-4 w-4 inline mr-2" />
+            Smart Mix ({selectedTracks.length})
+          </button>
         </div>
       </div>
 
@@ -450,6 +606,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
+
       </div>
 
       {/* Track Display - Conditional View */}
@@ -532,6 +689,15 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate text-sm flex items-center">
                         {track.title}
+                        {/* 🎧 DJ READINESS INDICATORS */}
+                        {track.bpm && track.key && track.energy && (
+                          <span
+                            className="ml-2 px-1 py-0.5 bg-green-900/30 border border-green-600 rounded text-xs font-bold text-green-300"
+                            title="DJ Ready: BPM, Key, and Energy analyzed"
+                          >
+                            ★ DJ READY
+                          </span>
+                        )}
                         {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 && (
                           <span
                             className="ml-2 px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300"
@@ -540,12 +706,39 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
                             {track.stemSeparation.stems.length} STEMS
                           </span>
                         )}
+                        {/* Harmonic Series Indicator */}
+                        {track.key && track.camelotKey && (
+                          <span
+                            className="ml-2 text-xs text-purple-400"
+                            title={`Harmonic series: ${track.camelotKey} family`}
+                          >
+                            ♫
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-400 truncate">
+                      <div className="text-xs text-gray-400 truncate flex items-center">
                         {track.album && `${track.album} • `}{track.genre || 'Unknown Genre'}
                         {track.stemSeparation && track.stemSeparation.status === 'processing' && (
                           <span className="ml-2 text-yellow-400">
                             • Processing stems {track.stemSeparation.progress}%
+                          </span>
+                        )}
+                        {/* Duration with DJ time format */}
+                        {track.duration && (
+                          <span className="ml-2 text-gray-500">
+                            • {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                          </span>
+                        )}
+                        {/* DJ Suitability Score */}
+                        {track.bpm && track.energy && (
+                          <span
+                            className={clsx('ml-2 text-xs',
+                              track.energy >= 70 && track.bpm >= 120 ? 'text-green-400' :
+                              track.energy >= 50 && track.bpm >= 100 ? 'text-yellow-400' : 'text-gray-500'
+                            )}
+                            title={`DJ Suitability: ${track.energy >= 70 && track.bpm >= 120 ? 'High Energy' : track.energy >= 50 && track.bpm >= 100 ? 'Medium Energy' : 'Low Energy'}`}
+                          >
+                            • {track.energy >= 70 && track.bpm >= 120 ? '🔥 Peak Time' : track.energy >= 50 && track.bpm >= 100 ? '🎆 Main Floor' : '🌙 Chill'}
                           </span>
                         )}
                       </div>
@@ -556,21 +749,80 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
 
                   <div className="col-span-1 flex items-center">
                     {track.bpm && (
-                      <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
+                      <div className="flex items-center space-x-1">
+                        <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
+                        {/* BPM Compatibility Indicator */}
+                        {selectedTracks.length === 1 && selectedTracks[0] !== track.id && (() => {
+                          const selectedTrack = tracks.find(t => t.id === selectedTracks[0])
+                          if (selectedTrack?.bpm && track.bpm) {
+                            const compatibility = getBpmCompatibility(selectedTrack.bpm, track.bpm)
+                            const compatColors = {
+                              perfect: 'text-green-400',
+                              good: 'text-yellow-400',
+                              stretch: 'text-orange-400',
+                              difficult: 'text-red-400'
+                            }
+                            return (
+                              <span
+                                className={clsx('text-xs', compatColors[compatibility])}
+                                title={`BPM compatibility: ${compatibility} (${Math.abs(selectedTrack.bpm - track.bpm)} BPM diff)`}
+                              >
+                                {compatibility === 'perfect' ? '★' : compatibility === 'good' ? '◐' : compatibility === 'stretch' ? '◯' : '✕'}
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
+                      </div>
                     )}
                   </div>
 
                   <div className="col-span-1 flex items-center">
                     {(keyDisplayMode === 'camelot' ? track.camelotKey : track.key) && (
-                      <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
-                        {keyDisplayMode === 'camelot' ? track.camelotKey : track.key}
-                      </span>
+                      <div className="flex items-center space-x-1">
+                        <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
+                          {keyDisplayMode === 'camelot' ? track.camelotKey : track.key}
+                        </span>
+                        {/* Harmonic Mixing Indicator - shows if compatible with previously selected track */}
+                        {selectedTracks.length === 1 && selectedTracks[0] !== track.id && (() => {
+                          const selectedTrack = tracks.find(t => t.id === selectedTracks[0])
+                          if (selectedTrack?.key && track.key) {
+                            const compatibility = getHarmonicCompatibility(selectedTrack.key, track.key)
+                            const compatColors = {
+                              perfect: 'text-green-400',
+                              good: 'text-yellow-400',
+                              caution: 'text-orange-400',
+                              clash: 'text-red-400'
+                            }
+                            return (
+                              <span
+                                className={clsx('text-xs', compatColors[compatibility])}
+                                title={`Harmonic compatibility with selected track: ${compatibility}`}
+                              >
+                                {compatibility === 'perfect' ? '★' : compatibility === 'good' ? '◐' : compatibility === 'caution' ? '◯' : '✕'}
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
+                      </div>
                     )}
                   </div>
 
                   <div className="col-span-1 flex items-center">
                     {track.energy ? (
-                      <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
+                      <div className="flex items-center space-x-1" title={`Energy Level: ${track.energy}/100`}>
+                        <div className="w-8 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className={clsx('h-full rounded-full transition-all',
+                              track.energy >= 80 ? 'bg-red-400' :
+                              track.energy >= 60 ? 'bg-yellow-400' : 'bg-green-400'
+                            )}
+                            style={{ width: `${track.energy}%` }}
+                          />
+                        </div>
+                        <span className={clsx('font-medium text-xs', getEnergyColor(track.energy))}>{track.energy}</span>
+                      </div>
                     ) : (
                       <span className="text-gray-500 text-xs">-</span>
                     )}

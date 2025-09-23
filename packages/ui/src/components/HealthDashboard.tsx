@@ -46,8 +46,12 @@ export function HealthDashboard() {
       setLoading(true)
       if (window.electronAPI) {
         const response = await window.electronAPI.getLibraryHealth()
-        if (response.success) {
-          setIssues(response.issues || [])
+        if (Array.isArray(response)) {
+          setIssues(response)
+        } else if ((response as any)?.success && Array.isArray((response as any).issues)) {
+          setIssues((response as any).issues)
+        } else {
+          setIssues([])
         }
       }
     } catch (error) {
@@ -98,8 +102,12 @@ export function HealthDashboard() {
       setScanning(true)
       if (window.electronAPI) {
         const response = await window.electronAPI.scanLibraryHealth()
-        if (response.success) {
-          setIssues(response.issues || [])
+        if (Array.isArray(response)) {
+          setIssues(response)
+        } else if ((response as any)?.success && Array.isArray((response as any).issues)) {
+          setIssues((response as any).issues)
+        } else {
+          setIssues([])
         }
       }
     } catch (error) {
@@ -175,8 +183,8 @@ export function HealthDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Library Health</h2>
-          <p className="text-gray-400">Monitor and fix issues in your music library</p>
+          <h2 className="text-2xl font-bold">DJ Library Health</h2>
+          <p className="text-gray-400">Keep your DJ collection clean and performance-ready</p>
         </div>
 
         <button

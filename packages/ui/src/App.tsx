@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LibraryView } from './components/LibraryView'
 import { ScanDialog } from './components/ScanDialog'
-import { AnalysisProgress } from './components/AnalysisProgress'
+import { JobManagement } from './components/JobManagement'
 import { HealthDashboard } from './components/HealthDashboard'
 import { DuplicateDetection } from './components/DuplicateDetection'
 import { Header } from './components/Header'
@@ -172,7 +172,7 @@ function AppContent() {
       case 'duplicates':
         return <DuplicateDetection />
       case 'analysis':
-        return <AnalysisProgress />
+        return <JobManagement />
       default:
         return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, RotateCcw, BarChart3, Key, Clock, Zap, AlertTriangle, RefreshCw, Shuffle } from 'lucide-react'
+import { Play, Pause, RotateCcw, BarChart3, Key, RefreshCw, Shuffle } from 'lucide-react'
 import clsx from 'clsx'
 
 interface AnalysisJob {
@@ -243,31 +243,6 @@ export function AnalysisProgress() {
     )
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <BarChart3 className="h-4 w-4 text-green-400" />
-      case 'running':
-        return <BarChart3 className="h-4 w-4 text-blue-400 animate-pulse" />
-      case 'failed':
-        return <AlertTriangle className="h-4 w-4 text-red-400" />
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-400'
-      case 'running':
-        return 'text-blue-400'
-      case 'failed':
-        return 'text-red-400'
-      default:
-        return 'text-gray-400'
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -341,25 +316,28 @@ export function AnalysisProgress() {
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Simple Progress Overview */}
+      {stats.total > 0 && (
         <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-primary-400">{stats.total}</div>
-          <div className="text-sm text-gray-400">Total Tracks</div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-lg font-medium">Analyzing Tracks</span>
+            <span className="text-sm text-gray-400">
+              {stats.completed} of {stats.total} completed
+            </span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
+            />
+          </div>
+          {stats.failed > 0 && (
+            <div className="text-xs text-red-400 mt-1">
+              {stats.failed} tracks had analysis issues
+            </div>
+          )}
         </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
-          <div className="text-sm text-gray-400">Completed</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-red-400">{stats.failed}</div>
-          <div className="text-sm text-gray-400">Failed</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-yellow-400">{stats.remaining}</div>
-          <div className="text-sm text-gray-400">Remaining</div>
-        </div>
-      </div>
+      )}
 
       {/* Analysis Queue */}
       <div className="bg-gray-800 rounded-lg overflow-hidden">
@@ -368,93 +346,46 @@ export function AnalysisProgress() {
         </div>
 
         <div className="divide-y divide-gray-700">
-          {jobs.map((job) => (
-            <div key={job.id} className="p-6">
-              <div className="flex items-center justify-between mb-3">
+          {jobs.filter(job => job.status === 'running' || job.status === 'pending').map((job) => (
+            <div key={job.id} className="p-4">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  {getStatusIcon(job.status)}
+                  <div className={clsx(
+                    'w-2 h-2 rounded-full',
+                    job.status === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-gray-500'
+                  )} />
                   <div>
                     <div className="font-medium">{job.trackTitle}</div>
-                    <div className="text-sm text-gray-400">{job.trackArtist}</div>
+                    <div className="text-xs text-gray-400">{job.trackArtist}</div>
                   </div>
                 </div>
-
-                <div className={clsx('text-sm font-medium', getStatusColor(job.status))}>
-                  {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                </div>
+                {job.status === 'running' && (
+                  <div className="text-xs text-gray-400">
+                    {Math.round(job.progress)}%
+                  </div>
+                )}
               </div>
-
-              {/* Progress Bar */}
-              <div className="mb-3">
-                <div className="flex justify-between text-sm mb-1">
-                  <span>{job.currentTask || 'Waiting...'}</span>
-                  <span>{Math.round(job.progress)}%</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className={clsx(
-                      'h-2 rounded-full transition-all duration-300',
-                      job.status === 'failed' ? 'bg-red-600' :
-                      job.status === 'completed' ? 'bg-green-600' :
-                      'bg-blue-600'
-                    )}
-                    style={{ width: `${job.progress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Results */}
-              {job.results && (
-                <div className="space-y-2">
-                  {job.results.errors ? (
-                    <div className="bg-red-900/20 border border-red-700 rounded-lg p-3">
-                      <div className="text-sm text-red-300">
-                        {job.results.errors.map((error, index) => (
-                          <div key={index}>• {error}</div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-4">
-                      {job.results.bpm && (
-                        <div className="flex items-center space-x-2">
-                          <Play className="h-4 w-4 text-blue-400" />
-                          <span className="text-sm">
-                            <span className="text-gray-400">BPM:</span> {job.results.bpm}
-                          </span>
-                        </div>
-                      )}
-                      {job.results.key && (
-                        <div className="flex items-center space-x-2">
-                          <Key className="h-4 w-4 text-purple-400" />
-                          <span className="text-sm">
-                            <span className="text-gray-400">Key:</span> {job.results.key}
-                          </span>
-                        </div>
-                      )}
-                      {job.results.energy && (
-                        <div className="flex items-center space-x-2">
-                          <Zap className="h-4 w-4 text-yellow-400" />
-                          <span className="text-sm">
-                            <span className="text-gray-400">Energy:</span> {job.results.energy}
-                          </span>
-                        </div>
-                      )}
-                      {job.results.duration && (
-                        <div className="flex items-center space-x-2">
-                          <Clock className="h-4 w-4 text-green-400" />
-                          <span className="text-sm">
-                            <span className="text-gray-400">Duration:</span> {Math.floor(job.results.duration / 60)}:{(job.results.duration % 60).toString().padStart(2, '0')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>
+
+        {/* Show completed/failed results in a simplified way */}
+        {jobs.some(job => job.status === 'completed' && job.results) && (
+          <div className="p-4 border-t border-gray-600">
+            <div className="text-sm text-gray-400 mb-2">Recently Analyzed</div>
+            <div className="grid gap-2">
+              {jobs.filter(job => job.status === 'completed' && job.results).slice(0, 3).map((job) => (
+                <div key={job.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300 truncate">{job.trackTitle}</span>
+                  <div className="flex space-x-3 text-xs">
+                    {job.results?.bpm && <span className="text-blue-400">{job.results.bpm} BPM</span>}
+                    {job.results?.key && <span className="text-purple-400">{job.results.key}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {jobs.length === 0 && (
           <div className="text-center py-12 text-gray-400">

@@ -30,6 +30,20 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 - **Backup Protection**: Optional backup of original files before processing
 - **Conflict Resolution**: Intelligent handling of duplicate filenames
 
+### 🎤 **STEM Separation (NEW)**
+- **AI-Powered Audio Separation**: Extract vocals, drums, bass, and other instruments
+- **Multiple Models**: Support for different separation algorithms and quality levels
+- **Batch Processing**: Queue multiple tracks for separation
+- **Real-time Progress**: Monitor separation progress with live updates
+- **DJ-Ready Output**: Separated stems ready for mixing and remixing
+
+### 📺 **YouTube Audio Downloader (NEW)**
+- **High-Quality Audio**: Download audio from YouTube videos in multiple formats
+- **Batch Downloads**: Queue multiple videos for download
+- **Smart Metadata**: Automatic title, artist, and metadata extraction
+- **Library Integration**: Downloaded tracks automatically added to your library
+- **Download Management**: Monitor progress and manage download queue
+
 ### 🔎 **Duplicate Detection**
 - **Multi-Strategy Analysis**: Audio fingerprinting, metadata, and file hash comparison
 - **Confidence Scoring**: Accurate duplicate identification
@@ -52,8 +66,8 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 
 ### Desktop App (Recommended)
 1. Download the latest release for your platform:
-   - **macOS**: `CleanCue-0.2.0.dmg` (Intel) or `CleanCue-0.2.0-arm64.dmg` (Apple Silicon)
-   - **Windows**: `CleanCue-0.2.0-x64.exe` (64-bit) or `CleanCue-0.2.0-ia32.exe` (32-bit)
+   - **macOS**: `CleanCue-0.2.3.dmg` (Intel) or `CleanCue-0.2.3-arm64.dmg` (Apple Silicon)
+   - **Windows**: `CleanCue-0.2.3-x64.exe` (64-bit) or `CleanCue-0.2.3-ia32.exe` (32-bit)
 2. Install and launch CleanCue
 3. Click "Scan Library" and select your music folder
 4. Let CleanCue analyze your tracks (BPM, key, energy)

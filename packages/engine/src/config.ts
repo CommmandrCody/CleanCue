@@ -45,7 +45,11 @@ export class ConfigManager {
         path: path.join(os.homedir(), '.cleancue', 'library.db')
       },
       scanning: {
+        paths: [], // Initialize as empty, will be set by user
         extensions: ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg', '.wma', '.aiff', '.ape'],
+        excludePatterns: ['node_modules', '.git', '.DS_Store'],
+        scanOnStartup: false,
+        watchFileSystem: true,
         respectGitignore: false,
         followSymlinks: false,
         maxFileSize: 500 * 1024 * 1024, // 500MB
@@ -101,6 +105,12 @@ export class ConfigManager {
         defaultFormat: 'm3u',
         relativePaths: true,
         includeCues: true
+      },
+      analysis: {
+        timeout: 300000,
+        retryAttempts: 3,
+        enableLogging: true,
+        logLevel: 'info'
       },
       ui: {
         theme: 'dark',

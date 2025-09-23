@@ -51,6 +51,7 @@ export interface Track {
   djSetReason?: string;        // Why it was flagged as a DJ set
 }
 
+// Legacy Analysis interface - deprecated, use Job system instead
 export interface Analysis {
   id: string;
   trackId: string;
@@ -63,6 +64,118 @@ export interface Analysis {
   completedAt?: Date;
   error?: string;
   createdAt: Date;
+}
+
+// ============================================================================
+// BACKGROUND JOB MANAGEMENT SYSTEM
+// ============================================================================
+
+export type JobType =
+  | 'scan'           // Scan filesystem for audio files
+  | 'file_stage'     // Import single file metadata to database
+  | 'batch_analyze'  // Create analysis jobs for multiple tracks
+  | 'analyze'        // Analyze single track (key, bpm, structure)
+  | 'batch_export'   // Create export jobs for multiple tracks
+  | 'export'         // Export tracks to format/destination
+  | 'cleanup'        // System maintenance jobs
+
+export type JobStatus =
+  | 'created'        // Job created but not queued
+  | 'queued'         // Added to processing queue
+  | 'running'        // Currently being processed
+  | 'completed'      // Successfully finished
+  | 'failed'         // Failed with error
+  | 'cancelled'      // User or system cancelled
+  | 'timeout'        // Exceeded timeout limit
+
+export interface BaseJob {
+  id: string;                    // UUID v4
+  type: JobType;
+  status: JobStatus;
+  priority: number;              // 1=highest, 10=lowest
+  payload: Record<string, any>;  // Job-specific data
+  progress: number;              // 0-100
+  result?: Record<string, any>;  // Job output
+  error?: string;               // Error message
+  attempts: number;             // Current retry count
+  maxAttempts: number;          // Maximum retries
+  parentJobId?: string;         // For batch operations
+  userInitiated: boolean;       // User vs system job
+  timeoutSeconds: number;       // Job timeout
+  createdAt: Date;
+  queuedAt?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  timeoutAt?: Date;
+}
+
+// Specific job payload types
+export interface ScanJobPayload {
+  paths: string[];              // Directories to scan
+  extensions: string[];         // File extensions to include
+  recursive: boolean;           // Scan subdirectories
+}
+
+export interface FileStageJobPayload {
+  filePath: string;            // Full path to audio file
+  hash: string;                // File content hash
+  metadata?: Record<string, any>; // Pre-extracted metadata
+}
+
+export interface BatchAnalyzeJobPayload {
+  trackIds: string[];          // Tracks to analyze
+  analysisTypes: ('key' | 'bpm' | 'structure' | 'energy')[];
+  forceReanalysis?: boolean;   // Re-analyze if already done
+}
+
+export interface AnalyzeJobPayload {
+  trackId: string;             // Track to analyze
+  trackPath: string;           // File path for analysis
+  analysisType: 'key' | 'bpm' | 'structure' | 'energy';
+  parameters?: Record<string, any>; // Analysis parameters
+}
+
+export interface BatchExportJobPayload {
+  trackIds: string[];          // Tracks to export
+  format: 'rekordbox' | 'serato' | 'traktor' | 'usb';
+  destination: string;         // Export destination
+  options?: Record<string, any>; // Format-specific options
+}
+
+export interface ExportJobPayload {
+  tracks: string[];            // Track IDs to export
+  format: string;              // Export format
+  destination: string;         // Export path
+  options?: Record<string, any>; // Export options
+}
+
+// Job result types
+export interface ScanJobResult {
+  filesFound: number;
+  filesStaged: number;
+  duplicatesSkipped: number;
+  errors: string[];
+  childJobIds: string[];       // Created FileStageJob IDs
+}
+
+export interface FileStageJobResult {
+  trackId: string;             // Created track ID
+  metadata: Record<string, any>; // Extracted metadata
+  analysisJobId?: string;      // Created analysis job
+}
+
+export interface AnalyzeJobResult {
+  trackId: string;
+  analysisType: string;
+  results: Record<string, any>; // Analysis results
+  processingTimeMs: number;
+}
+
+export interface ExportJobResult {
+  tracksExported: number;
+  outputPath: string;
+  fileSize: number;
+  errors: string[];
 }
 
 export interface CuePoint {
@@ -99,8 +212,7 @@ export interface HealthIssue {
   message: string;
 }
 
-// Analysis types
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+// Analysis types - using new job system JobStatus above
 
 // USB Export types
 export interface USBExportProfile {

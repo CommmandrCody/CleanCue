@@ -12,6 +12,8 @@ import type {
   Track, Analysis, ScanResult, HealthReport, ExportOptions,
   ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
 } from '@cleancue/shared';
+
+type SharedUSBExportResult = USBExportResult;
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -116,10 +118,15 @@ export class CleanCueEngine {
     this.events.emit('scan:started', { paths });
 
     const result: ScanResult = {
-      tracksScanned: 0,
-      tracksAdded: 0,
-      tracksUpdated: 0,
-      errors: []
+      totalFiles: 0,
+      newTracks: 0,
+      updatedTracks: 0,
+      removedTracks: 0,
+      errors: [],
+      duration: 0,
+      tracksScanned: 0, // Legacy field
+      tracksAdded: 0, // Legacy field
+      tracksUpdated: 0 // Legacy field
     };
 
     try {
@@ -246,18 +253,12 @@ export class CleanCueEngine {
           });
 
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          result.errors.push({
-            path: file.path,
-            error: `File processing failed: ${errorMessage}`
-          });
+          result.errors.push(`${file.path}: File processing failed: ${errorMessage}`);
         }
       }
     } catch (error) {
       console.error(`[ENGINE] Critical scan error:`, error);
-      result.errors.push({
-        path: 'scan_operation',
-        error: error instanceof Error ? error.message : 'Failed to scan library'
-      });
+      result.errors.push(`scan_operation: ${error instanceof Error ? error.message : 'Failed to scan library'}`);
     }
 
     console.log(`[ENGINE] 🔍 [${scanId}] Scan completed. Final results:`, result);
@@ -304,9 +305,11 @@ export class CleanCueEngine {
           this.workerPool.submitJob({
             id: analysis.id,
             trackId,
+            status: 'pending',
+            parameters: analyzerConfig.parameters || {},
+            createdAt: new Date(),
             audioPath: track.path,
-            analyzer: analyzerName,
-            parameters: analyzerConfig.parameters || {}
+            analyzer: analyzerName
           }),
           new Promise<never>((_, reject) => {
             setTimeout(() => reject(new Error(`${analyzerName} analysis timeout`)), 120000) // 2 minute timeout per analyzer
@@ -679,22 +682,24 @@ export class CleanCueEngine {
 
     return {
       totalTracks: tracks.length,
-      issues: legacyIssues
+      healthyTracks: tracks.length - legacyIssues.length,
+      issues: legacyIssues,
+      generatedAt: new Date()
     };
   }
 
   // Export functionality
   async exportLibrary(format: ExportFormat, options: ExportOptions): Promise<void> {
-    this.events.emit('export:started', { 
-      format: format.name, 
-      trackCount: this.db.getAllTracks().length 
+    this.events.emit('export:started', {
+      format: format,
+      trackCount: this.db.getAllTracks().length
     });
 
     const tracks = options.playlistIds?.length 
       ? this.getTracksFromPlaylists(options.playlistIds)
       : this.db.getAllTracks();
 
-    if (format.name === 'm3u' || format.name === 'serato' || format.name === 'engine') {
+    if (format === 'playlist' || format === 'serato' || format === 'traktor') {
       await this.exportM3U(tracks, options);
     }
 
@@ -870,10 +875,30 @@ export class CleanCueEngine {
     this.events.emit('export:started', { format: 'USB', trackCount: tracks.length });
 
     try {
-      const result = await this.usbExporter.exportToUSB(tracks, allCues, options);
+      const result = await this.usbExporter.exportToUSB(tracks, allCues, options as import('./usb-exporter').USBExportOptions);
 
       this.events.emit('export:completed', { outputPath: result.outputPath });
-      return result;
+
+      // Convert local USBExportResult to shared USBExportResult
+      const sharedResult: SharedUSBExportResult = {
+        success: result.success,
+        exportedCount: result.copiedFiles,
+        failedCount: result.errorFiles,
+        errors: result.errors.map(e => `${e.file}: ${e.error}`),
+        destinationPath: result.outputPath,
+        // Include all fields from local result
+        totalFiles: result.totalFiles,
+        copiedFiles: result.copiedFiles,
+        skippedFiles: result.skippedFiles,
+        errorFiles: result.errorFiles,
+        outputPath: result.outputPath,
+        totalSize: result.totalSize,
+        warnings: result.warnings,
+        duplicatesHandled: result.duplicatesHandled,
+        backupsCreated: result.backupsCreated
+      };
+
+      return sharedResult;
     } catch (error) {
       throw new Error(`USB export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

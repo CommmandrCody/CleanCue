@@ -9,6 +9,15 @@ export class CleanCueDatabase {
   private sqlInstance: any = null;
 
   constructor(dbPath: string) {
+    // PREVENT TEST DATA CONTAMINATION
+    if (process.env.NODE_ENV === 'test' && !dbPath.includes('test')) {
+      throw new Error('SAFETY: Test environment must use test database paths containing "test"');
+    }
+
+    if (dbPath.includes('test') && process.env.NODE_ENV !== 'test') {
+      throw new Error('SAFETY: Production environment cannot use test database paths');
+    }
+
     this.dbPath = dbPath;
   }
 
@@ -126,7 +135,7 @@ export class CleanCueDatabase {
       )
     `);
 
-    // Create enterprise job management table
+    // Create background job management table
     this.db!.run(`
       CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,                    -- UUID v4
@@ -148,6 +157,21 @@ export class CleanCueDatabase {
         completed_at INTEGER,                  -- Completion time
         timeout_at INTEGER,                    -- Timeout deadline
         FOREIGN KEY (parent_job_id) REFERENCES jobs (id)
+      )
+    `);
+
+    // Create analyses table
+    this.db!.run(`
+      CREATE TABLE IF NOT EXISTS analyses (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL,
+        analyzer_name TEXT NOT NULL,
+        analyzer_version TEXT NOT NULL,
+        parameters TEXT NOT NULL,
+        results TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (track_id) REFERENCES tracks (id)
       )
     `);
 
@@ -190,6 +214,7 @@ export class CleanCueDatabase {
     // Create indexes
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status)`);
@@ -1044,6 +1069,15 @@ export class CleanCueDatabase {
   }
 
   // ============================================================================
+  // RAW SQL EXECUTION
+  // ============================================================================
+
+  exec(sql: string, params: any[] = []): any[] {
+    this.ensureInitialized();
+    return this.execQuery(sql, params);
+  }
+
+  // ============================================================================
   // JOB MANAGEMENT DATABASE METHODS
   // ============================================================================
 
@@ -1262,6 +1296,12 @@ export class CleanCueDatabase {
   ): string {
     this.ensureInitialized();
 
+    // PRODUCTION SAFETY: Prevent bulk data generation
+    const jobCount = this.execQuery("SELECT COUNT(*) as count FROM jobs")[0]?.values[0]?.[0] || 0;
+    if (jobCount > 1000) {
+      throw new Error('PRODUCTION SAFETY: Maximum job limit (1000) reached. Database may contain test data.');
+    }
+
     // First, verify the table exists and check its schema
     try {
       const tables = this.db!.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs';");
@@ -1304,9 +1344,9 @@ export class CleanCueDatabase {
   }
 
   private createJobsTableManually(): void {
+    // SAFETY: Only create if table doesn't exist - never drop existing data
     this.db!.exec(`
-      DROP TABLE IF EXISTS jobs;
-      CREATE TABLE jobs (
+      CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'created',
@@ -1575,42 +1615,6 @@ export class CleanCueDatabase {
     return result.changes;
   }
 
-  // Temporary exec method for compatibility with JobManager - TODO: Remove when JobManager is updated
-  exec(sql: string, params: any[] = []): any {
-    this.ensureInitialized();
-
-    if (sql.trim().toUpperCase().startsWith('SELECT')) {
-      // For SQL.js compatibility, use execQuery for SELECT statements
-      // Convert positional params to named params if needed
-      if (params.length > 0) {
-        // For simple cases, try to execute directly with positional params
-        try {
-          const stmt = this.db.prepare(sql);
-          const result = stmt.getAsObject(params);
-          if (result) {
-            return [{
-              columns: Object.keys(result),
-              values: [Object.values(result)]
-            }];
-          }
-          return [{ columns: [], values: [] }];
-        } catch (error) {
-          console.warn('Failed to execute SQL with positional params:', error);
-          return [{ columns: [], values: [] }];
-        }
-      } else {
-        // No params, use execQuery
-        const rows = this.execQuery(sql, {});
-        return [{
-          columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-          values: rows.map(row => Object.values(row))
-        }];
-      }
-    } else {
-      const stmt = this.db.prepare(sql);
-      return stmt.run(params);
-    }
-  }
 
   close(): void {
     if (this.db) {

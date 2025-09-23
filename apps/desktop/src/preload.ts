@@ -45,6 +45,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLibraryHealth: () => ipcRenderer.invoke('get-library-health'),
   scanLibraryHealth: () => ipcRenderer.invoke('scan-library-health'),
 
+  // Background Job Management API
+  getAllJobs: () => ipcRenderer.invoke('get-all-jobs'),
+  getActiveJobs: () => ipcRenderer.invoke('get-active-jobs'),
+  getQueuedJobs: () => ipcRenderer.invoke('get-queued-jobs'),
+  getJobById: (jobId: string) => ipcRenderer.invoke('get-job-by-id', jobId),
+  cancelJob: (jobId: string) => ipcRenderer.invoke('cancel-job', jobId),
+  retryJob: (jobId: string) => ipcRenderer.invoke('retry-job', jobId),
+  abortAllJobs: () => ipcRenderer.invoke('abort-all-jobs'),
+  createScanJob: (paths: string[], extensions?: string[], userInitiated?: boolean) =>
+    ipcRenderer.invoke('create-scan-job', paths, extensions, userInitiated),
+  createAnalysisJobs: (trackIds: string[], analysisTypes?: string[], userInitiated?: boolean) =>
+    ipcRenderer.invoke('create-analysis-jobs', trackIds, analysisTypes, userInitiated),
+
   // STEM Separation operations
   stemCheckDependencies: () => ipcRenderer.invoke('stem-check-dependencies'),
   stemStartSeparation: (trackId: string, settings: any) => ipcRenderer.invoke('stem-start-separation', trackId, settings),
@@ -137,6 +150,17 @@ export interface ElectronAPI {
   youtubeSearchVideos: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: any[]; error?: string }>
   youtubeDownloadAudio: (url: string, options?: any) => Promise<{ success: boolean; downloadedFiles?: string[]; outputDir?: string; error?: string }>
   youtubeDownloadBatch: (items: any[], globalOptions?: any) => Promise<{ success: boolean; results?: any[]; error?: string }>
+
+  // Background Job Management API types
+  getAllJobs: () => Promise<any[]>
+  getActiveJobs: () => Promise<any[]>
+  getQueuedJobs: () => Promise<any[]>
+  getJobById: (jobId: string) => Promise<any | null>
+  cancelJob: (jobId: string) => Promise<boolean>
+  retryJob: (jobId: string) => Promise<boolean>
+  abortAllJobs: () => Promise<void>
+  createScanJob: (paths: string[], extensions?: string[], userInitiated?: boolean) => Promise<string>
+  createAnalysisJobs: (trackIds: string[], analysisTypes?: string[], userInitiated?: boolean) => Promise<string>
 
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void

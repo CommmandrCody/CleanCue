@@ -64,8 +64,14 @@ export function DuplicateDetection() {
     try {
       setScanning(true)
       if (window.electronAPI) {
-        const duplicates = await window.electronAPI.scanForDuplicates()
-        setDuplicateGroups(duplicates || [])
+        const response = await window.electronAPI.scanForDuplicates()
+        if (Array.isArray(response)) {
+          setDuplicateGroups(response)
+        } else if (response?.success && Array.isArray((response as any).data)) {
+          setDuplicateGroups((response as any).data)
+        } else {
+          setDuplicateGroups([])
+        }
       }
     } catch (error) {
       console.error('Failed to scan for duplicates:', error)
@@ -146,8 +152,8 @@ export function DuplicateDetection() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Duplicate Detection</h2>
-          <p className="text-gray-400">Find and remove duplicate tracks from your library</p>
+          <h2 className="text-2xl font-bold">DJ Library Duplicates</h2>
+          <p className="text-gray-400">Clean duplicate tracks to optimize your DJ collection</p>
         </div>
 
         <div className="flex items-center space-x-3">

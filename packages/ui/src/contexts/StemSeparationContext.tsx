@@ -297,14 +297,14 @@ export function StemSeparationProvider({ children }: StemSeparationProviderProps
             // For queue processing, we don't wait for completion since we want to process items sequentially
             // The backend will handle one separation at a time, and we'll get progress updates via events
           } else {
-            console.error(`🎵 [STEM QUEUE] ❌ Failed to start separation: ${response.error}`)
+            console.error(`🎵 [STEM QUEUE] ❌ Failed to start separation: ${(response as any).error}`)
             dispatch({
               type: 'UPDATE_ITEM',
               payload: {
                 id: item.id,
                 updates: {
                   status: 'error',
-                  errorMessage: response.error || 'Failed to start separation',
+                  errorMessage: (response as any).error || 'Failed to start separation',
                   completedAt: Date.now()
                 }
               }

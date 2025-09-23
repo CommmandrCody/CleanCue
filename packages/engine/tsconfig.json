@@ -6,6 +6,8 @@
     "rootDir": "./src",
     "strict": false,
     "noImplicitAny": false,
+    "skipLibCheck": true,
+    "noErrorTruncation": true,
     "module": "CommonJS",
     "target": "ES2020",
     "moduleResolution": "node",
@@ -14,7 +16,7 @@
     "verbatimModuleSyntax": false
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"],
+  "exclude": ["dist", "node_modules", "**/*.test.ts"],
   "references": [
     { "path": "../shared" }
   ]

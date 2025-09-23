@@ -119,6 +119,37 @@ CREATE TABLE IF NOT EXISTS stem_separations (
 **Primary Key**: `id` (UUID)
 **Foreign Keys**: `track_id` → `tracks.id`
 
+### `jobs` Table
+
+Manages background job processing for DJ operations like scanning, analysis, and exports.
+
+```sql
+CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,                    -- UUID v4
+  type TEXT NOT NULL,                     -- Job type: scan, file_stage, batch_analyze, analyze, batch_export, export
+  status TEXT NOT NULL DEFAULT 'created', -- created, queued, running, completed, failed, cancelled, timeout
+  priority INTEGER NOT NULL DEFAULT 5,   -- 1=highest (user exports), 10=lowest (cleanup)
+  payload TEXT NOT NULL,                  -- JSON job data
+  progress INTEGER DEFAULT 0,            -- 0-100 completion percentage
+  result TEXT,                           -- JSON result data
+  error TEXT,                            -- Error message if failed
+  attempts INTEGER DEFAULT 0,            -- Current retry count
+  max_attempts INTEGER DEFAULT 3,        -- Maximum retry attempts
+  parent_job_id TEXT,                    -- Parent job for batch operations
+  user_initiated BOOLEAN DEFAULT 0,      -- True if user-initiated, false if system
+  timeout_seconds INTEGER DEFAULT 300,   -- Job timeout in seconds
+  created_at INTEGER NOT NULL,           -- Creation timestamp
+  queued_at INTEGER,                     -- When added to queue
+  started_at INTEGER,                    -- Execution start time
+  completed_at INTEGER,                  -- Completion time
+  timeout_at INTEGER,                    -- Timeout deadline
+  FOREIGN KEY (parent_job_id) REFERENCES jobs (id)
+);
+```
+
+**Primary Key**: `id` (UUID)
+**Foreign Keys**: `parent_job_id` → `jobs.id` (self-referencing for batch jobs)
+
 ## Indexes
 
 Performance optimizations for common query patterns:
@@ -130,6 +161,12 @@ CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id);
 CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id);
 CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id);
 CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
+CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority);
+CREATE INDEX IF NOT EXISTS idx_jobs_parent_job_id ON jobs(parent_job_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_queue_order ON jobs(status, priority, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_timeout ON jobs(status, timeout_at);
 ```
 
 ## Relationships
@@ -138,11 +175,13 @@ CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(statu
 tracks (1) ←→ (M) analyses
 tracks (1) ←→ (M) cue_points
 tracks (1) ←→ (M) stem_separations
+jobs (1) ←→ (M) jobs (parent-child)
 ```
 
 - One track can have multiple analyses
 - One track can have multiple cue points
 - One track can have multiple stem separations
+- One job can have multiple child jobs (batch operations)
 
 ## Data Types
 

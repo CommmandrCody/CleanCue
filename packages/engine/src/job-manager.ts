@@ -5,7 +5,7 @@ import type {
   BaseJob, JobType, JobStatus, ScanJobPayload, FileStageJobPayload,
   BatchAnalyzeJobPayload, AnalyzeJobPayload, BatchExportJobPayload,
   ExportJobPayload, ScanJobResult, FileStageJobResult, AnalyzeJobResult,
-  ExportJobResult
+  ExportJobResult, ExportFormat, AnalysisParameters
 } from '@cleancue/shared';
 
 export interface JobManagerOptions {
@@ -42,7 +42,7 @@ export class JobManager extends EventEmitter {
       cleanupIntervalMs: options.cleanupIntervalMs ?? 300000
     };
 
-    console.log('[JOB-MANAGER] 🚀 Enterprise Job Manager initialized');
+    console.log('[JOB-MANAGER] 🚀 Background Job Manager initialized');
     console.log('[JOB-MANAGER] 📊 Max concurrent jobs:', this.options.maxConcurrentJobs);
     console.log('[JOB-MANAGER] ⏱️  Default timeout:', this.options.jobTimeoutSeconds, 'seconds');
   }
@@ -75,7 +75,8 @@ export class JobManager extends EventEmitter {
     const payload: ScanJobPayload = {
       paths,
       extensions,
-      recursive: true
+      recursive: true,
+      userInitiated: true
     };
 
     return this.createJob('scan', payload, {
@@ -92,7 +93,11 @@ export class JobManager extends EventEmitter {
     parentJobId?: string
   ): Promise<string> {
     const payload: FileStageJobPayload = {
-      filePath,
+      trackId: `track_${Date.now()}`, // Generate temporary ID
+      sourcePath: filePath,
+      targetPath: filePath, // Assume same path for staging
+      operation: 'copy',
+      filePath, // Legacy field
       hash,
       metadata
     };
@@ -113,6 +118,20 @@ export class JobManager extends EventEmitter {
   ): Promise<string> {
     const payload: BatchAnalyzeJobPayload = {
       trackIds,
+      parameters: {
+        enableBpm: analysisTypes.includes('bpm'),
+        enableKey: analysisTypes.includes('key'),
+        enableStructure: analysisTypes.includes('structure'),
+        enableEnergy: analysisTypes.includes('energy'),
+        enableLoudness: false,
+        enableBeats: false,
+        enableDanceability: false,
+        enableValence: false,
+        enableAcousticness: false,
+        enableInstrumentalness: false,
+        enableLiveness: false,
+        enableSpeechiness: false
+      },
       analysisTypes,
       forceReanalysis
     };
@@ -133,9 +152,22 @@ export class JobManager extends EventEmitter {
   ): Promise<string> {
     const payload: AnalyzeJobPayload = {
       trackId,
-      trackPath,
-      analysisType,
-      parameters
+      filePath: trackPath,
+      parameters: (parameters as AnalysisParameters) || {
+        enableBpm: analysisType === 'bpm',
+        enableKey: analysisType === 'key',
+        enableStructure: analysisType === 'structure',
+        enableEnergy: analysisType === 'energy',
+        enableLoudness: false,
+        enableBeats: false,
+        enableDanceability: false,
+        enableValence: false,
+        enableAcousticness: false,
+        enableInstrumentalness: false,
+        enableLiveness: false,
+        enableSpeechiness: false
+      },
+      analysisType
     };
 
     return this.createJob('analyze', payload, {
@@ -154,9 +186,13 @@ export class JobManager extends EventEmitter {
   ): Promise<string> {
     const payload: BatchExportJobPayload = {
       trackIds,
+      options: {
+        format: format as ExportFormat,
+        destination,
+        ...(options || {})
+      },
       format,
-      destination,
-      options
+      destination
     };
 
     return this.createJob('batch_export', payload, {
@@ -174,10 +210,15 @@ export class JobManager extends EventEmitter {
     options?: Record<string, any>
   ): Promise<string> {
     const payload: ExportJobPayload = {
-      tracks,
-      format,
-      destination,
-      options
+      trackId: tracks[0] || '', // Use first track ID
+      options: {
+        format: format as ExportFormat,
+        destination,
+        ...(options || {})
+      },
+      tracks, // Legacy field
+      format: format as ExportFormat,
+      destination
     };
 
     return this.createJob('export', payload, {
@@ -587,11 +628,16 @@ export class JobManager extends EventEmitter {
 
     // Return mock result
     const result: ScanJobResult = {
+      success: true,
+      totalFiles: 0,
+      newTracks: 0,
+      updatedTracks: 0,
+      removedTracks: 0,
+      errors: [],
+      duration: 0,
       filesFound: 0,
       filesStaged: 0,
-      duplicatesSkipped: 0,
-      errors: [],
-      childJobIds: []
+      duplicatesSkipped: 0
     };
 
     console.log(`[JOB-MANAGER] ✅ Scan job completed: ${job.id}`, result);
@@ -608,7 +654,10 @@ export class JobManager extends EventEmitter {
     await this.safeUpdateProgress(job.id, 100);
 
     const result: FileStageJobResult = {
+      success: true,
       trackId: `track-${Date.now()}`,
+      sourcePath: payload.sourcePath,
+      targetPath: payload.targetPath,
       metadata: payload.metadata || {}
     };
 
@@ -628,15 +677,16 @@ export class JobManager extends EventEmitter {
     await this.safeUpdateProgress(job.id, 100);
 
     const trackIds = payload.trackIds || [];
-    const result = {
-      tracksAnalyzed: trackIds.length,
-      analysisTypes: payload.analysisTypes || [],
-      results: trackIds.map(trackId => ({
-        trackId,
-        status: 'completed',
-        analysisData: { mock: true }
-      })),
-      processingTimeMs: 400
+    const result: AnalyzeJobResult = {
+      success: true,
+      trackId: trackIds[0] || '',
+      results: {
+        bpm: 120,
+        key: 'C',
+        energy: 0.8,
+        processingTime: 400
+      },
+      analysisType: payload.analysisTypes?.[0] || 'bpm'
     };
 
     console.log(`[JOB-MANAGER] ✅ Batch analyze job completed: ${job.id}`, result);
@@ -658,8 +708,8 @@ export class JobManager extends EventEmitter {
 
     // Return mock result
     const result: AnalyzeJobResult = {
+      success: true,
       trackId: payload.trackId,
-      analysisType: payload.analysisType,
       results: {
         // Mock data based on analysis type
         ...(payload.analysisType === 'key' && { key: 'C major', confidence: 0.85 }),
@@ -671,9 +721,10 @@ export class JobManager extends EventEmitter {
             { type: 'verse', startTime: 16, endTime: 48 },
             { type: 'chorus', startTime: 48, endTime: 80 }
           ]
-        })
+        }),
+        processingTime: 400
       },
-      processingTimeMs: 400
+      analysisType: payload.analysisType
     };
 
     console.log(`[JOB-MANAGER] ✅ Analyze job completed: ${job.id}`, result);
@@ -692,12 +743,13 @@ export class JobManager extends EventEmitter {
     await this.safeUpdateProgress(job.id, 100);
 
     const trackIds = payload.trackIds || [];
-    const result = {
+    const result: ExportJobResult = {
+      success: true,
+      trackId: trackIds[0] || '',
+      outputPath: payload.destination || '',
+      format: (payload.format || 'mp3') as ExportFormat,
       tracksExported: trackIds.length,
-      format: payload.format,
-      destination: payload.destination,
-      exportedFiles: trackIds.map(trackId => `${payload.destination}/${trackId}.${payload.format}`),
-      processingTimeMs: 400
+      errors: []
     };
 
     console.log(`[JOB-MANAGER] ✅ Batch export job completed: ${job.id}`, result);
@@ -717,8 +769,11 @@ export class JobManager extends EventEmitter {
 
     const tracks = payload.tracks || [];
     const result: ExportJobResult = {
+      success: true,
+      trackId: payload.trackId,
+      outputPath: payload.destination || '',
+      format: payload.format,
       tracksExported: tracks.length,
-      outputPath: payload.destination,
       fileSize: 1024000, // Mock 1MB file size
       errors: []
     };

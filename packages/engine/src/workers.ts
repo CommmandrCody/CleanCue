@@ -185,12 +185,8 @@ export class WorkerPool extends EventEmitter {
             if (resultMatch) {
               const results = JSON.parse(resultMatch[1]);
               resolve({
-                jobId: job.id,
-                trackId: job.trackId,
-                analyzer: job.analyzer,
-                results,
-                status: 'completed',
-                completedAt: new Date()
+                ...results,
+                jobId: job.id
               });
             } else {
               reject(new Error('No result found in worker output'));

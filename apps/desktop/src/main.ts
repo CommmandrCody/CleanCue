@@ -199,6 +199,47 @@ class CleanCueApp {
       this.mainWindow?.webContents.send('analysis:completed', data);
     });
 
+    // Forward job management events
+    this.engine.on('job:started', (data: any) => {
+      console.log('[MAIN] Forwarding job:started event:', data);
+      this.mainWindow?.webContents.send('job:started', data);
+    });
+
+    this.engine.on('job:progress', (data: any) => {
+      console.log('[MAIN] Forwarding job:progress event:', data);
+      this.mainWindow?.webContents.send('job:progress', data);
+    });
+
+    this.engine.on('job:completed', (data: any) => {
+      console.log('[MAIN] Forwarding job:completed event:', data);
+      this.mainWindow?.webContents.send('job:completed', data);
+    });
+
+    this.engine.on('job:failed', (data: any) => {
+      console.log('[MAIN] Forwarding job:failed event:', data);
+      this.mainWindow?.webContents.send('job:failed', data);
+    });
+
+    this.engine.on('job:cancelled', (data: any) => {
+      console.log('[MAIN] Forwarding job:cancelled event:', data);
+      this.mainWindow?.webContents.send('job:cancelled', data);
+    });
+
+    this.engine.on('job:timeout', (data: any) => {
+      console.log('[MAIN] Forwarding job:timeout event:', data);
+      this.mainWindow?.webContents.send('job:timeout', data);
+    });
+
+    this.engine.on('job:queued', (data: any) => {
+      console.log('[MAIN] Forwarding job:queued event:', data);
+      this.mainWindow?.webContents.send('job:queued', data);
+    });
+
+    this.engine.on('job:retried', (data: any) => {
+      console.log('[MAIN] Forwarding job:retried event:', data);
+      this.mainWindow?.webContents.send('job:retried', data);
+    });
+
     // Forward export events
     this.engine.on('export:started', (data: any) => {
       this.mainWindow?.webContents.send('export:started', data);
@@ -250,6 +291,41 @@ class CleanCueApp {
           this.createMainWindow()
         }
       })
+    })
+
+    // Handle app shutdown with analysis job checking
+    app.on('before-quit', async (event) => {
+      if (this.engine && this.engineInitialized) {
+        try {
+          // Check for active analysis jobs
+          const activeJobs = await this.engine.getActiveAnalysisJobs()
+          if (activeJobs && activeJobs.length > 0) {
+            event.preventDefault()
+
+            const result = await dialog.showMessageBox(this.mainWindow!, {
+              type: 'warning',
+              title: 'Active Analysis Jobs',
+              message: `You have ${activeJobs.length} active analysis job(s) running.`,
+              detail: 'Do you want to abort these jobs and quit, or cancel quitting?',
+              buttons: ['Abort Jobs & Quit', 'Cancel'],
+              defaultId: 1,
+              cancelId: 1
+            })
+
+            if (result.response === 0) {
+              // User chose to abort jobs and quit
+              console.log('[SHUTDOWN] Aborting active analysis jobs before quit...')
+              await this.engine.abortAllAnalysisJobs()
+              app.quit()
+            }
+            // If response === 1, do nothing (cancel quit)
+          }
+        } catch (error) {
+          console.error('[SHUTDOWN] Error checking active jobs:', error)
+          // If we can't check, just quit
+          app.quit()
+        }
+      }
     })
 
     // Quit when all windows are closed, except on macOS
@@ -958,6 +1034,124 @@ class CleanCueApp {
       } catch (error) {
         console.error('Failed to get analysis jobs:', error)
         return { success: false, error: (error as Error).message }
+      }
+    })
+
+    // Background Job Management IPC handlers
+    ipcMain.handle('get-all-jobs', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return []
+        }
+        return this.engine.getAllJobs()
+      } catch (error) {
+        console.error('Failed to get all jobs:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('get-active-jobs', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return []
+        }
+        return this.engine.getActiveJobs()
+      } catch (error) {
+        console.error('Failed to get active jobs:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('get-queued-jobs', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return []
+        }
+        return this.engine.getQueuedJobs()
+      } catch (error) {
+        console.error('Failed to get queued jobs:', error)
+        return []
+      }
+    })
+
+    ipcMain.handle('get-job-by-id', async (_, jobId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return null
+        }
+        return this.engine.getJobById(jobId)
+      } catch (error) {
+        console.error('Failed to get job by ID:', error)
+        return null
+      }
+    })
+
+    ipcMain.handle('cancel-job', async (_, jobId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return false
+        }
+        return this.engine.cancelJob(jobId)
+      } catch (error) {
+        console.error('Failed to cancel job:', error)
+        return false
+      }
+    })
+
+    ipcMain.handle('retry-job', async (_, jobId: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return false
+        }
+        return this.engine.retryJob(jobId)
+      } catch (error) {
+        console.error('Failed to retry job:', error)
+        return false
+      }
+    })
+
+    ipcMain.handle('abort-all-jobs', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return
+        }
+        await this.engine.abortAllJobs()
+      } catch (error) {
+        console.error('Failed to abort all jobs:', error)
+        throw error
+      }
+    })
+
+    ipcMain.handle('create-scan-job', async (_, paths: string[], extensions?: string[], userInitiated: boolean = true) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          throw new Error('Engine not initialized')
+        }
+        return this.engine.createScanJob(paths, extensions, userInitiated)
+      } catch (error) {
+        console.error('Failed to create scan job:', error)
+        throw error
+      }
+    })
+
+    ipcMain.handle('create-analysis-jobs', async (_, trackIds: string[], analysisTypes?: string[], userInitiated: boolean = true) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          throw new Error('Engine not initialized')
+        }
+        return this.engine.createAnalysisJobs(trackIds, analysisTypes, userInitiated)
+      } catch (error) {
+        console.error('Failed to create analysis jobs:', error)
+        throw error
       }
     })
 

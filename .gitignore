@@ -18,6 +18,12 @@ build/
 logs/
 *.log
 npm-debug.log*
+
+# SAFETY: Prevent dangerous test files from being committed
+test_*.js
+debug-*.js
+**/mock-job-executor.*
+**/job-performance.test.*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*

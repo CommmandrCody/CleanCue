@@ -73,6 +73,6 @@ pnpm dev:desktop      # Start desktop app in development mode
 
 ---
 
-**Last Updated**: 2024-09-17
-**Version**: 0.1.0
+**Last Updated**: 2025-01-23
+**Version**: 0.2.3
 **Status**: Ready for public launch 🚀

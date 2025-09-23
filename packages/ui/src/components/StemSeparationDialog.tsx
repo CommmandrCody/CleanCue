@@ -113,13 +113,13 @@ export function StemSeparationDialog({ isOpen, onClose, selectedTracks }: StemSe
                 progress: 0
               })
             } else {
-              console.error(`🎵 [STEM UI] ❌ Failed for track ${track.id}:`, response.error)
+              console.error(`🎵 [STEM UI] ❌ Failed for track ${track.id}:`, (response as any).error)
               newResults.push({
                 id: `error-${track.id}`,
                 trackId: track.id,
                 status: 'error',
                 progress: 0,
-                errorMessage: response.error || 'Failed to start separation'
+                errorMessage: (response as any).error || 'Failed to start separation'
               })
             }
           } catch (error) {
