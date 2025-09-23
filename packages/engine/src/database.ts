@@ -16,6 +16,9 @@ export class CleanCueDatabase {
     if (this.db) return; // Already initialized
 
     try {
+      // Check database permissions first
+      await this.checkPermissions();
+
       // Initialize sql.js
       const SQL = await initSqlJs();
       this.sqlInstance = SQL;
@@ -123,18 +126,28 @@ export class CleanCueDatabase {
       )
     `);
 
-    // Create analyses table
+    // Create enterprise job management table
     this.db!.run(`
-      CREATE TABLE IF NOT EXISTS analyses (
-        id TEXT PRIMARY KEY,
-        track_id TEXT NOT NULL,
-        analyzer_name TEXT NOT NULL,
-        analyzer_version TEXT NOT NULL,
-        parameters TEXT NOT NULL,
-        results TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (track_id) REFERENCES tracks (id)
+      CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,                    -- UUID v4
+        type TEXT NOT NULL,                     -- Job type: scan, file_stage, batch_analyze, analyze, batch_export, export
+        status TEXT NOT NULL DEFAULT 'created', -- created, queued, running, completed, failed, cancelled, timeout
+        priority INTEGER NOT NULL DEFAULT 5,   -- 1=highest (user exports), 10=lowest (cleanup)
+        payload TEXT NOT NULL,                  -- JSON job data
+        progress INTEGER DEFAULT 0,            -- 0-100 completion percentage
+        result TEXT,                           -- JSON result data
+        error TEXT,                            -- Error message if failed
+        attempts INTEGER DEFAULT 0,            -- Current retry count
+        max_attempts INTEGER DEFAULT 3,        -- Maximum retry attempts
+        parent_job_id TEXT,                    -- Parent job for batch operations
+        user_initiated BOOLEAN DEFAULT 0,      -- True if user-initiated, false if system
+        timeout_seconds INTEGER DEFAULT 300,   -- Job timeout in seconds
+        created_at INTEGER NOT NULL,           -- Creation timestamp
+        queued_at INTEGER,                     -- When added to queue
+        started_at INTEGER,                    -- Execution start time
+        completed_at INTEGER,                  -- Completion time
+        timeout_at INTEGER,                    -- Timeout deadline
+        FOREIGN KEY (parent_job_id) REFERENCES jobs (id)
       )
     `);
 
@@ -177,10 +190,17 @@ export class CleanCueDatabase {
     // Create indexes
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(hash)`);
-    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_analyses_track_id ON analyses(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_track_id ON stem_separations(track_id)`);
     this.db!.run(`CREATE INDEX IF NOT EXISTS idx_stem_separations_status ON stem_separations(status)`);
+
+    // Job management indexes for performance
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs(parent_job_id)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_queue_order ON jobs(status, priority, created_at)`);
+    this.db!.run(`CREATE INDEX IF NOT EXISTS idx_jobs_timeout ON jobs(status, timeout_at)`);
 
     this.saveDatabase();
   }
@@ -414,6 +434,21 @@ export class CleanCueDatabase {
 
     this.saveDatabase();
     return true;
+  }
+
+  // EMERGENCY NUCLEAR OPTION - DELETE EVERYTHING
+  clearAllTracks(): void {
+    this.ensureInitialized();
+    console.log(`[DATABASE] 💥 CLEARING ALL TRACKS AND RELATED DATA`);
+
+    // Delete everything in order
+    this.db!.run('DELETE FROM stem_separations');
+    this.db!.run('DELETE FROM cue_points');
+    this.db!.run('DELETE FROM analyses');
+    this.db!.run('DELETE FROM tracks');
+
+    console.log(`[DATABASE] ✅ All tracks and related data cleared`);
+    this.saveDatabase();
   }
 
   private rowToTrack(row: any): Track {
@@ -824,6 +859,757 @@ export class CleanCueDatabase {
 
     this.saveDatabase();
     console.log('[DATABASE] Orphaned records cleanup completed');
+  }
+
+  cleanupStaleAnalysisJobs(): void {
+    this.ensureInitialized();
+
+    console.log('[DATABASE] ===== STARTING STALE ANALYSIS JOBS CLEANUP =====');
+
+    // First, let's see what jobs exist
+    const allJobsResult = this.db!.exec(`
+      SELECT status, COUNT(*) as count
+      FROM analyses
+      GROUP BY status
+    `);
+
+    if (allJobsResult.length > 0) {
+      console.log('[DATABASE] Current analysis job status counts:');
+      for (const row of allJobsResult[0].values) {
+        console.log(`[DATABASE] - ${row[0]}: ${row[1]} jobs`);
+      }
+    } else {
+      console.log('[DATABASE] No analysis jobs found in database');
+    }
+
+    // Reset any running jobs to pending state since no jobs can be running when the app starts up
+    const beforeUpdate = this.db!.exec(`
+      SELECT COUNT(*) as count FROM analyses WHERE status = 'running'
+    `);
+    const runningJobsBefore = beforeUpdate[0]?.values[0]?.[0] || 0;
+
+    console.log(`[DATABASE] Found ${runningJobsBefore} running jobs to reset`);
+
+    if (runningJobsBefore > 0) {
+      this.db!.exec(`
+        UPDATE analyses
+        SET status = 'pending', updated_at = datetime('now', 'localtime')
+        WHERE status = 'running'
+      `);
+
+      // Verify the update worked
+      const afterUpdate = this.db!.exec(`
+        SELECT COUNT(*) as count FROM analyses WHERE status = 'running'
+      `);
+      const runningJobsAfter = afterUpdate[0]?.values[0]?.[0] || 0;
+
+      console.log(`[DATABASE] ✅ Reset ${runningJobsBefore} stale running jobs to pending`);
+      console.log(`[DATABASE] Running jobs remaining: ${runningJobsAfter}`);
+    } else {
+      console.log('[DATABASE] No running jobs found to reset');
+    }
+
+    // Clean up duplicate pending analysis jobs for the same track
+    const pendingDuplicates = this.db!.exec(`
+      SELECT COUNT(*) as count FROM analyses WHERE status = 'pending'
+    `);
+    const pendingJobsBefore = pendingDuplicates[0]?.values[0]?.[0] || 0;
+
+    if (pendingJobsBefore > 0) {
+      console.log(`[DATABASE] Found ${pendingJobsBefore} pending jobs, checking for duplicates...`);
+
+      // Remove duplicate pending jobs, keeping only the newest one per track
+      this.db!.exec(`
+        DELETE FROM analyses
+        WHERE id NOT IN (
+          SELECT MAX(id)
+          FROM analyses
+          WHERE status = 'pending'
+          GROUP BY track_id
+        ) AND status = 'pending'
+      `);
+
+      const pendingAfter = this.db!.exec(`
+        SELECT COUNT(*) as count FROM analyses WHERE status = 'pending'
+      `);
+      const pendingJobsAfter = pendingAfter[0]?.values[0]?.[0] || 0;
+      const duplicatesRemoved = pendingJobsBefore - pendingJobsAfter;
+
+      if (duplicatesRemoved > 0) {
+        console.log(`[DATABASE] ✅ Removed ${duplicatesRemoved} duplicate pending jobs`);
+        console.log(`[DATABASE] Pending jobs remaining: ${pendingJobsAfter}`);
+      } else {
+        console.log('[DATABASE] No duplicate pending jobs found');
+      }
+    }
+
+    this.saveDatabase();
+    console.log('[DATABASE] ===== STALE ANALYSIS JOBS CLEANUP COMPLETED =====');
+  }
+
+  private async checkPermissions(): Promise<void> {
+    const { promises: fs } = require('fs');
+    const os = require('os');
+    const path = require('path');
+
+    try {
+      // Ensure directory exists
+      const dbDir = path.dirname(this.dbPath);
+      await fs.mkdir(dbDir, { recursive: true });
+
+      // Check if database file exists and is writable
+      if (existsSync(this.dbPath)) {
+        const stats = await fs.stat(this.dbPath);
+        const currentUser = os.userInfo();
+
+        if (stats.uid !== currentUser.uid) {
+          console.error(`❌ DATABASE PERMISSION ERROR: File owned by different user!`);
+          console.error(`   Fix with: sudo chown ${currentUser.username}:staff "${this.dbPath}"`);
+          throw new Error('Database permission error - file owned by different user');
+        }
+
+        // Test write access
+        await fs.access(this.dbPath, fs.constants.W_OK);
+      }
+    } catch (error) {
+      if (error.code === 'EACCES') {
+        throw new Error(`Database permission error: Cannot write to ${this.dbPath}`);
+      }
+      throw error;
+    }
+  }
+
+  // SHUTDOWN SUPPORT - Get analyses by status
+  getAnalysesByStatus(statuses: string[]): Analysis[] {
+    this.ensureInitialized();
+
+    const placeholders = statuses.map(() => '?').join(',');
+    const sql = `
+      SELECT a.*, t.title, t.artist
+      FROM analyses a
+      JOIN tracks t ON a.track_id = t.id
+      WHERE a.status IN (${placeholders})
+      ORDER BY a.created_at DESC
+    `;
+
+    try {
+      const result = this.db!.exec({ sql, bind: statuses });
+
+      if (result.length === 0) {
+        return [];
+      }
+
+      return result[0].values.map((row: any[]) => ({
+        id: row[0],
+        trackId: row[1],
+        status: row[2],
+        progress: row[3],
+        analysisData: row[4] ? JSON.parse(row[4]) : null,
+        error: row[5],
+        createdAt: new Date(row[6]),
+        updatedAt: new Date(row[7]),
+        track: {
+          title: row[8] || 'Unknown',
+          artist: row[9] || 'Unknown'
+        }
+      }));
+    } catch (error) {
+      console.error('[DATABASE] Error getting analyses by status:', error);
+      return [];
+    }
+  }
+
+  // SHUTDOWN SUPPORT - Abort all active analyses
+  abortAllActiveAnalyses(): void {
+    this.ensureInitialized();
+
+    const sql = `
+      UPDATE analyses
+      SET status = 'cancelled',
+          error = 'Aborted during application shutdown',
+          updated_at = datetime('now', 'localtime')
+      WHERE status IN ('running', 'pending')
+    `;
+
+    try {
+      const result = this.db!.exec(sql);
+      const affectedRows = this.db!.exec("SELECT changes() as count")[0]?.values[0]?.[0] || 0;
+
+      console.log(`[DATABASE] ✅ Cancelled ${affectedRows} active analysis jobs`);
+      this.saveDatabase();
+    } catch (error) {
+      console.error('[DATABASE] ❌ Error aborting active analyses:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // JOB MANAGEMENT DATABASE METHODS
+  // ============================================================================
+
+  insertJob(job: {
+    id: string;
+    type: string;
+    status: string;
+    priority: number;
+    payload: string;
+    progress: number;
+    attempts: number;
+    maxAttempts: number;
+    parentJobId?: string;
+    userInitiated: boolean;
+    timeoutSeconds: number;
+    createdAt: number;
+  }): void {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      INSERT INTO jobs (
+        id, type, status, priority, payload, progress, attempts, max_attempts,
+        parent_job_id, user_initiated, timeout_seconds, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run([
+      job.id, job.type, job.status, job.priority, job.payload,
+      job.progress, job.attempts, job.maxAttempts, job.parentJobId,
+      job.userInitiated ? 1 : 0, job.timeoutSeconds, job.createdAt
+    ]);
+
+    this.saveDatabase();
+  }
+
+  updateJobStatus(jobId: string, status: string = '', updates: {
+    queuedAt?: Date;
+    startedAt?: Date;
+    completedAt?: Date;
+    timeoutAt?: Date;
+    progress?: number;
+    attempts?: number;
+    result?: string;
+    error?: string;
+  } = {}): void {
+    this.ensureInitialized();
+
+    const setClause: string[] = [];
+    const values: any[] = [];
+
+    if (status) {
+      setClause.push('status = ?');
+      values.push(status);
+    }
+
+    if (updates.queuedAt !== undefined) {
+      setClause.push('queued_at = ?');
+      const queuedAt = updates.queuedAt instanceof Date ? updates.queuedAt : new Date(updates.queuedAt);
+      if (isNaN(queuedAt.getTime())) {
+        console.warn('Invalid queuedAt value:', updates.queuedAt);
+        values.push(null);
+      } else {
+        values.push(queuedAt.toISOString());
+      }
+    }
+    if (updates.startedAt !== undefined) {
+      setClause.push('started_at = ?');
+      const startedAt = updates.startedAt instanceof Date ? updates.startedAt : new Date(updates.startedAt);
+      if (isNaN(startedAt.getTime())) {
+        console.warn('Invalid startedAt value:', updates.startedAt);
+        values.push(null);
+      } else {
+        values.push(startedAt.toISOString());
+      }
+    }
+    if (updates.completedAt !== undefined) {
+      setClause.push('completed_at = ?');
+      const completedAt = updates.completedAt instanceof Date ? updates.completedAt : new Date(updates.completedAt);
+      if (isNaN(completedAt.getTime())) {
+        console.warn('Invalid completedAt value:', updates.completedAt);
+        values.push(null);
+      } else {
+        values.push(completedAt.toISOString());
+      }
+    }
+    if (updates.timeoutAt !== undefined) {
+      setClause.push('timeout_at = ?');
+      const timeoutAt = updates.timeoutAt instanceof Date ? updates.timeoutAt : new Date(updates.timeoutAt);
+      if (isNaN(timeoutAt.getTime())) {
+        console.warn('Invalid timeoutAt value:', updates.timeoutAt);
+        values.push(null);
+      } else {
+        values.push(timeoutAt.toISOString());
+      }
+    }
+    if (updates.progress !== undefined) {
+      setClause.push('progress = ?');
+      values.push(updates.progress.toString());
+    }
+    if (updates.attempts !== undefined) {
+      setClause.push('attempts = ?');
+      values.push(updates.attempts.toString());
+    }
+    if (updates.result !== undefined) {
+      setClause.push('result = ?');
+      values.push(updates.result);
+    }
+    if (updates.error !== undefined) {
+      setClause.push('error = ?');
+      values.push(updates.error);
+    }
+
+    if (setClause.length === 0) {
+      return; // Nothing to update
+    }
+
+    values.push(jobId);
+
+    const stmt = this.db!.prepare(`
+      UPDATE jobs SET ${setClause.join(', ')} WHERE id = ?
+    `);
+
+    stmt.run(values);
+    this.saveDatabase();
+  }
+
+  getJob(jobId: string): any {
+    this.ensureInitialized();
+
+    const results = this.db!.exec('SELECT * FROM jobs WHERE id = ?', [jobId]);
+
+    if (results.length === 0 || results[0].values.length === 0) {
+      return null;
+    }
+
+    const columns = results[0].columns;
+    const values = results[0].values[0];
+
+    const obj: any = {};
+    columns.forEach((col, index) => {
+      obj[col] = values[index];
+    });
+
+    return obj;
+  }
+
+  getJobsByStatus(status: string): any[] {
+    this.ensureInitialized();
+    const result = this.execQuery(`
+      SELECT * FROM jobs WHERE status = ?
+      ORDER BY priority ASC, created_at ASC
+    `, [status]);
+    return Array.isArray(result) ? result : [];
+  }
+
+  getJobsByParent(parentJobId: string): any[] {
+    this.ensureInitialized();
+
+    const sql = `
+      SELECT * FROM jobs WHERE parent_job_id = $parentJobId
+      ORDER BY created_at ASC
+    `;
+    return this.execQuery(sql, { $parentJobId: parentJobId });
+  }
+
+  getNextQueuedJob(): any {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      SELECT * FROM jobs
+      WHERE status = 'queued'
+      ORDER BY priority ASC, created_at ASC
+      LIMIT 1
+    `);
+    return stmt.get();
+  }
+
+  getJobStats(): { [status: string]: number } {
+    this.ensureInitialized();
+
+    const queryResults = this.db!.exec(`
+      SELECT status, COUNT(*) as count FROM jobs
+      GROUP BY status
+    `);
+
+    const results = [];
+    if (queryResults.length > 0) {
+      const columns = queryResults[0].columns;
+      const values = queryResults[0].values;
+
+      for (const row of values) {
+        const obj: any = {};
+        columns.forEach((col, index) => {
+          obj[col] = row[index];
+        });
+        results.push(obj);
+      }
+    }
+
+    const stats: { [status: string]: number } = {};
+    for (const row of results) {
+      stats[row.status] = row.count;
+    }
+    return stats;
+  }
+
+  // Job management methods for testing
+  createJob(
+    jobId: string,
+    type: string,
+    priority: number,
+    payload: any,
+    userInitiated: boolean = true,
+    timeoutSeconds: number = 300,
+    parentJobId?: string
+  ): string {
+    this.ensureInitialized();
+
+    // First, verify the table exists and check its schema
+    try {
+      const tables = this.db!.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs';");
+      if (tables.length === 0 || tables[0].values.length === 0) {
+        console.error('Jobs table does not exist! Recreating...');
+        this.createJobsTableManually();
+      }
+    } catch (e) {
+      console.error('Error checking table existence:', e);
+    }
+
+    // Use named parameters to avoid parameter binding issues
+    const stmt = this.db!.prepare(`
+      INSERT INTO jobs (id, type, status, priority, payload, user_initiated, timeout_seconds, created_at, parent_job_id)
+      VALUES ($id, $type, 'created', $priority, $payload, $user_initiated, $timeout_seconds, $created_at, $parent_job_id)
+    `);
+
+    try {
+      stmt.run({
+        $id: jobId,
+        $type: type,
+        $priority: priority,
+        $payload: JSON.stringify(payload),
+        $user_initiated: userInitiated ? 1 : 0,
+        $timeout_seconds: timeoutSeconds,
+        $created_at: Date.now(),
+        $parent_job_id: parentJobId || null
+      });
+    } catch (error) {
+      // Don't log UNIQUE constraint errors as they're expected in some cases
+      if (error instanceof Error && !error.message.includes('UNIQUE constraint failed')) {
+        console.error('Error inserting job:', error);
+        console.error('Parameters:', { jobId, type, priority, payload, userInitiated, timeoutSeconds });
+      }
+      throw error;
+    }
+
+    this.saveDatabase();
+    return jobId;
+  }
+
+  private createJobsTableManually(): void {
+    this.db!.exec(`
+      DROP TABLE IF EXISTS jobs;
+      CREATE TABLE jobs (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'created',
+        priority INTEGER NOT NULL DEFAULT 5,
+        payload TEXT NOT NULL,
+        progress INTEGER DEFAULT 0,
+        result TEXT,
+        error TEXT,
+        attempts INTEGER DEFAULT 0,
+        max_attempts INTEGER DEFAULT 3,
+        parent_job_id TEXT,
+        user_initiated BOOLEAN DEFAULT 0,
+        timeout_seconds INTEGER DEFAULT 300,
+        created_at INTEGER NOT NULL,
+        queued_at INTEGER,
+        started_at INTEGER,
+        completed_at INTEGER,
+        timeout_at INTEGER,
+        FOREIGN KEY (parent_job_id) REFERENCES jobs (id)
+      );
+    `);
+  }
+
+  private execQuery(sql: string, params: any[] | any = []): any[] {
+    try {
+      let results;
+
+      if (Array.isArray(params) && params.length > 0) {
+        // Handle positional parameters - convert to named parameters for SQL.js
+        // For now, convert simple cases. We may need more sophisticated logic.
+        let paramIndex = 0;
+        const namedParams: any = {};
+        const convertedSql = sql.replace(/\?/g, () => {
+          const paramName = `$param${paramIndex}`;
+          namedParams[paramName] = params[paramIndex];
+          paramIndex++;
+          return paramName;
+        });
+
+        const stmt = this.db!.prepare(convertedSql);
+        stmt.bind(namedParams);
+
+        const rows: any[] = [];
+        while (stmt.step()) {
+          const row = stmt.getAsObject();
+          rows.push(row);
+        }
+        stmt.free();
+        return rows;
+      } else if (typeof params === 'object' && !Array.isArray(params) && Object.keys(params).length > 0) {
+        // Handle named parameters
+        const stmt = this.db!.prepare(sql);
+        stmt.bind(params);
+
+        const rows: any[] = [];
+        while (stmt.step()) {
+          const row = stmt.getAsObject();
+          rows.push(row);
+        }
+        stmt.free();
+        return rows;
+      } else {
+        // No parameters - use exec directly
+        results = this.db!.exec(sql);
+
+        if (!results || results.length === 0) return [];
+
+        const columns = results[0].columns;
+        const values = results[0].values;
+
+        return values.map(row => {
+          const obj: any = {};
+          columns.forEach((col, index) => {
+            obj[col] = row[index];
+          });
+          return obj;
+        });
+      }
+    } catch (error) {
+      console.error('SQL execution error:', error);
+      console.error('SQL:', sql);
+      console.error('Params:', params);
+      console.error('Stack:', error instanceof Error ? error.stack : '');
+      return [];
+    }
+  }
+
+  getAllJobs(): any[] {
+    this.ensureInitialized();
+    return this.execQuery(`
+      SELECT * FROM jobs
+      ORDER BY created_at DESC
+    `);
+  }
+
+  getActiveJobs(): any[] {
+    this.ensureInitialized();
+    return this.execQuery(`
+      SELECT * FROM jobs
+      WHERE status IN ('created', 'queued', 'running')
+      ORDER BY priority ASC, created_at ASC
+    `);
+  }
+
+  getQueuedJobs(): any[] {
+    this.ensureInitialized();
+    return this.execQuery(`
+      SELECT * FROM jobs
+      WHERE status = 'queued'
+      ORDER BY priority ASC, created_at ASC
+    `);
+  }
+
+  getJobsByType(type: string): any[] {
+    this.ensureInitialized();
+    return this.execQuery(`
+      SELECT * FROM jobs
+      WHERE type = ?
+      ORDER BY created_at DESC
+    `, [type]);
+  }
+
+  getJobsByParentId(parentJobId: string): any[] {
+    return this.getJobsByParent(parentJobId);
+  }
+
+
+  updateJobProgress(jobId: string, progress: number): void {
+    this.ensureInitialized();
+    this.updateJobStatus(jobId, '', { progress });
+  }
+
+  updateJobResult(jobId: string, result: string): void {
+    this.ensureInitialized();
+    this.updateJobStatus(jobId, '', { result });
+  }
+
+  updateJobError(jobId: string, error: string): void {
+    this.ensureInitialized();
+    this.updateJobStatus(jobId, '', { error });
+  }
+
+  incrementJobAttempts(jobId: string): void {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      UPDATE jobs SET attempts = attempts + 1 WHERE id = $jobId
+    `);
+    stmt.run({ $jobId: jobId });
+    this.saveDatabase();
+  }
+
+  cancelJob(jobId: string): void {
+    this.ensureInitialized();
+    this.updateJobStatus(jobId, 'cancelled');
+  }
+
+  // Simple wrapper for just updating status
+  updateJobStatusOnly(jobId: string, status: string): void {
+    this.updateJobStatus(jobId, status);
+  }
+
+  getUserInitiatedJobs(): any[] {
+    return this.getUserJobs(true);
+  }
+
+  getSystemJobs(): any[] {
+    return this.getUserJobs(false);
+  }
+
+  getJobsSortedByPriority(): any[] {
+    this.ensureInitialized();
+
+    return this.execQuery(`
+      SELECT * FROM jobs
+      ORDER BY priority ASC, created_at ASC
+    `, []);
+  }
+
+  getJobStatistics(): {
+    total: number,
+    completed: number,
+    running: number,
+    queued: number,
+    created: number,
+    failed: number,
+    cancelled: number
+  } {
+    const stats = this.getJobStats();
+    return {
+      total: Object.values(stats).reduce((sum, count) => sum + count, 0),
+      completed: stats.completed || 0,
+      running: stats.running || 0,
+      queued: stats.queued || 0,
+      created: stats.created || 0,
+      failed: stats.failed || 0,
+      cancelled: stats.cancelled || 0
+    };
+  }
+
+  getJobsInTimeRange(startDate: Date, endDate: Date): any[] {
+    this.ensureInitialized();
+
+    const sql = `
+      SELECT * FROM jobs
+      WHERE created_at BETWEEN $startDate AND $endDate
+      ORDER BY created_at DESC
+    `;
+    return this.execQuery(sql, { $startDate: startDate.getTime(), $endDate: endDate.getTime() });
+  }
+
+  getUserJobs(userInitiated: boolean): any[] {
+    this.ensureInitialized();
+
+    const sql = `
+      SELECT * FROM jobs WHERE user_initiated = $userInitiated
+      ORDER BY created_at DESC
+    `;
+    return this.execQuery(sql, { $userInitiated: userInitiated ? 1 : 0 });
+  }
+
+  cleanupOldJobs(olderThanMs: number): number {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      DELETE FROM jobs
+      WHERE status IN ('completed', 'failed', 'cancelled', 'timeout')
+      AND completed_at < ?
+    `);
+
+    const result = stmt.run([olderThanMs]);
+    this.saveDatabase();
+
+    return result.changes;
+  }
+
+  resetRunningJobs(): number {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      UPDATE jobs
+      SET status = 'queued', error = 'Interrupted by application restart'
+      WHERE status = 'running'
+    `);
+
+    const result = stmt.run();
+    this.saveDatabase();
+
+    return result.changes;
+  }
+
+  cancelAllActiveJobs(reason: string): number {
+    this.ensureInitialized();
+
+    const stmt = this.db!.prepare(`
+      UPDATE jobs
+      SET status = 'cancelled',
+          error = ?,
+          completed_at = ?
+      WHERE status IN ('running', 'queued')
+    `);
+
+    const result = stmt.run([reason, Date.now()]);
+    this.saveDatabase();
+
+    return result.changes;
+  }
+
+  // Temporary exec method for compatibility with JobManager - TODO: Remove when JobManager is updated
+  exec(sql: string, params: any[] = []): any {
+    this.ensureInitialized();
+
+    if (sql.trim().toUpperCase().startsWith('SELECT')) {
+      // For SQL.js compatibility, use execQuery for SELECT statements
+      // Convert positional params to named params if needed
+      if (params.length > 0) {
+        // For simple cases, try to execute directly with positional params
+        try {
+          const stmt = this.db.prepare(sql);
+          const result = stmt.getAsObject(params);
+          if (result) {
+            return [{
+              columns: Object.keys(result),
+              values: [Object.values(result)]
+            }];
+          }
+          return [{ columns: [], values: [] }];
+        } catch (error) {
+          console.warn('Failed to execute SQL with positional params:', error);
+          return [{ columns: [], values: [] }];
+        }
+      } else {
+        // No params, use execQuery
+        const rows = this.execQuery(sql, {});
+        return [{
+          columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+          values: rows.map(row => Object.values(row))
+        }];
+      }
+    } else {
+      const stmt = this.db.prepare(sql);
+      return stmt.run(params);
+    }
   }
 
   close(): void {

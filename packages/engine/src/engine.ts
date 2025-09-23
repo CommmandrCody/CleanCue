@@ -7,6 +7,7 @@ import { USBExporter } from './usb-exporter';
 import { StemSeparationService, StemSeparationSettings, StemSeparationResult } from './stem-separation-service';
 import { YouTubeDownloaderService, YouTubeDownloadOptions, YouTubeVideoInfo, YouTubeDownloadResult, YouTubeSearchResult } from './youtube-downloader-service';
 import { HealthEngine } from './health-engine';
+import { JobManager } from './job-manager';
 import type {
   Track, Analysis, ScanResult, HealthReport, ExportOptions,
   ExportFormat, CleanCueEvent, CuePoint, Config, USBExportOptions, USBExportResult
@@ -24,6 +25,7 @@ export class CleanCueEngine {
   private stemSeparationService: StemSeparationService;
   private youtubeDownloader: YouTubeDownloaderService;
   private healthEngine: HealthEngine;
+  private jobManager: JobManager;
 
   constructor(configPath?: string) {
     this.config = new ConfigManager(configPath);
@@ -38,6 +40,7 @@ export class CleanCueEngine {
       this.config.get('workers.pythonPath')
     );
     this.healthEngine = new HealthEngine(this.db, this.events);
+    this.jobManager = new JobManager(this.db, this.config.get('workers'));
 
     this.setupEventHandlers();
   }
@@ -47,6 +50,12 @@ export class CleanCueEngine {
 
     // Clean up orphaned records to ensure database consistency
     this.db.cleanupOrphanedRecords();
+
+    // Initialize job manager and recover any interrupted jobs
+    await this.jobManager.initialize();
+
+    // Clean up any stale analysis jobs from previous sessions (legacy system)
+    this.db.cleanupStaleAnalysisJobs();
   }
 
   private setupEventHandlers() {
@@ -97,8 +106,13 @@ export class CleanCueEngine {
   // Library scanning
   async scanLibrary(paths: string[]): Promise<ScanResult> {
     const scanId = Math.random().toString(36).substring(7)
-    console.log(`[ENGINE] 🔍 [${scanId}] Starting library scan for paths:`, paths);
-    console.log(`[ENGINE] 🔍 [${scanId}] Call stack:`, new Error().stack);
+    console.log(`[ENGINE] 🔍 [${scanId}] ===== SCAN LIBRARY STARTED =====`);
+    console.log(`[ENGINE] 🔍 [${scanId}] Scan paths:`, paths);
+    console.log(`[ENGINE] 🔍 [${scanId}] Database initialized:`, this.db?.isInitialized());
+    console.log(`[ENGINE] 🔍 [${scanId}] Scanner exists:`, !!this.scanner);
+    console.log(`[ENGINE] 🔍 [${scanId}] Scanner config:`, this.scanner?.getConfig());
+    console.log(`[ENGINE] 🔍 [${scanId}] Config manager exists:`, !!this.config);
+    console.log(`[ENGINE] 🔍 [${scanId}] Scanning config:`, this.config?.get('scanning'));
     this.events.emit('scan:started', { paths });
 
     const result: ScanResult = {
@@ -109,9 +123,12 @@ export class CleanCueEngine {
     };
 
     try {
-      console.log(`[ENGINE] Scanning for audio files...`);
+      console.log(`[ENGINE] 🔍 [${scanId}] ===== CALLING SCANNER.SCANPATHS =====`);
+      console.log(`[ENGINE] 🔍 [${scanId}] About to call this.scanner.scanPaths with:`, paths);
       const files = await this.scanner.scanPaths(paths);
-      console.log(`[ENGINE] Found ${files.length} audio files to process`);
+      console.log(`[ENGINE] 🔍 [${scanId}] ===== SCANNER RETURNED =====`);
+      console.log(`[ENGINE] 🔍 [${scanId}] Scanner returned ${files.length} files`);
+      console.log(`[ENGINE] 🔍 [${scanId}] First few files:`, files.slice(0, 3).map(f => ({ path: f.path, ext: f.path.split('.').pop() })));
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -299,7 +316,7 @@ export class CleanCueEngine {
         // Update analysis with results
         this.db.updateAnalysis(analysis.id, {
           results: result.results,
-          status: result.status
+          status: result.status as any // TODO: Fix when replacing with new job system
         });
 
         console.log(`✅ ${analyzerName} analysis completed for track ${trackId}`);
@@ -766,14 +783,42 @@ export class CleanCueEngine {
     for (const track of tracks) {
       const analyses = this.db.getAnalysesByTrack(track.id);
 
-      for (const analysis of analyses) {
-        let progress = 0;
-        let results: any = {};
-        let errors: string[] = [];
+      // ONE JOB PER TRACK - combine all analyzers
+      let overallStatus: 'pending' | 'running' | 'completed' | 'failed' = 'pending';
+      let overallProgress = 0;
+      let currentTask: string | undefined;
+      let results: any = {};
+      let errors: string[] = [];
 
-        if (analysis.status === 'completed') {
-          progress = 100;
-          // Extract results based on analyzer type
+      if (analyses.length === 0) {
+        // No analysis yet - pending
+        overallStatus = 'pending';
+        overallProgress = 0;
+        currentTask = 'Waiting to analyze...';
+      } else {
+        // Check status of all analyzers
+        const completedAnalyses = analyses.filter(a => a.status === 'completed');
+        const runningAnalyses = analyses.filter(a => a.status === 'running');
+        const failedAnalyses = analyses.filter(a => a.status === 'failed');
+
+        // Calculate progress based on completed analyzers
+        const totalAnalyzers = 3; // tempo, key, energy
+        overallProgress = Math.round((completedAnalyses.length / totalAnalyzers) * 100);
+
+        // Determine overall status
+        if (runningAnalyses.length > 0) {
+          overallStatus = 'running';
+          currentTask = `Analyzing ${runningAnalyses[0].analyzerName}...`;
+        } else if (completedAnalyses.length === totalAnalyzers) {
+          overallStatus = 'completed';
+          overallProgress = 100;
+        } else if (failedAnalyses.length > 0) {
+          overallStatus = 'failed';
+          errors = failedAnalyses.map(a => `${a.analyzerName} failed`);
+        }
+
+        // Collect results from completed analyses
+        for (const analysis of completedAnalyses) {
           if (analysis.analyzerName === 'tempo' && analysis.results) {
             results.bpm = (analysis.results as any).tempo;
           }
@@ -783,27 +828,22 @@ export class CleanCueEngine {
           if (analysis.analyzerName === 'energy' && analysis.results) {
             results.energy = (analysis.results as any).energy;
           }
-          results.duration = track.durationMs ? Math.floor(track.durationMs / 1000) : undefined;
-        } else if (analysis.status === 'failed') {
-          progress = 0;
-          errors.push(`Analysis failed: ${analysis.analyzerName}`);
-        } else if (analysis.status === 'running') {
-          progress = 50; // Assume halfway if running
         }
-
-        jobs.push({
-          id: analysis.id,
-          trackTitle: track.title || 'Unknown Title',
-          trackArtist: track.artist || 'Unknown Artist',
-          status: analysis.status,
-          progress: progress,
-          currentTask: analysis.status === 'running' ? `Analyzing ${analysis.analyzerName}...` : undefined,
-          results: Object.keys(results).length > 0 ? {
-            ...results,
-            errors: errors.length > 0 ? errors : undefined
-          } : (errors.length > 0 ? { errors } : undefined)
-        });
+        results.duration = track.durationMs ? Math.floor(track.durationMs / 1000) : undefined;
       }
+
+      jobs.push({
+        id: track.id, // Use track ID as job ID
+        trackTitle: track.title || 'Unknown Title',
+        trackArtist: track.artist || 'Unknown Artist',
+        status: overallStatus,
+        progress: overallProgress,
+        currentTask,
+        results: Object.keys(results).length > 0 ? {
+          ...results,
+          errors: errors.length > 0 ? errors : undefined
+        } : (errors.length > 0 ? { errors } : undefined)
+      });
     }
 
     return jobs;
@@ -1383,8 +1423,160 @@ export class CleanCueEngine {
     this.workerPool.killAllJobs();
   }
 
+  // EMERGENCY METHOD - CLEAR ALL TRACKS
+  clearAllTracks(): void {
+    console.log('[ENGINE] 💥 CLEARING ALL TRACKS FROM DATABASE');
+    this.db.clearAllTracks();
+    console.log('[ENGINE] ✅ All tracks cleared');
+  }
+
+  // DEBUG METHOD - MANUALLY RUN CLEANUP
+  manualCleanupStaleJobs(): void {
+    console.log('[ENGINE] 🧹 MANUALLY RUNNING STALE JOBS CLEANUP');
+    this.db.cleanupStaleAnalysisJobs();
+    console.log('[ENGINE] ✅ Manual cleanup completed');
+  }
+
+  // SHUTDOWN SUPPORT - Get active analysis jobs
+  async getActiveAnalysisJobs(): Promise<Analysis[]> {
+    try {
+      return this.db.getAnalysesByStatus(['running', 'pending']);
+    } catch (error) {
+      console.error('[ENGINE] Error getting active analysis jobs:', error);
+      return [];
+    }
+  }
+
+  // SHUTDOWN SUPPORT - Abort all active analysis jobs
+  async abortAllAnalysisJobs(): Promise<void> {
+    console.log('[ENGINE] 🚫 Aborting all active analysis jobs...');
+
+    try {
+      // Stop worker pool from processing new jobs
+      this.workerPool.stopAllJobs();
+
+      // Update database to mark all running/pending jobs as cancelled
+      this.db.abortAllActiveAnalyses();
+
+      console.log('[ENGINE] ✅ All analysis jobs aborted');
+    } catch (error) {
+      console.error('[ENGINE] ❌ Error aborting analysis jobs:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // NEW JOB MANAGEMENT SYSTEM
+  // ============================================================================
+
+  async createScanJob(paths: string[], extensions: string[] = ['mp3', 'flac', 'wav', 'm4a'], userInitiated: boolean = true): Promise<string> {
+    return this.jobManager.createScanJob(paths, extensions, userInitiated);
+  }
+
+  async createAnalysisJobs(trackIds: string[], analysisTypes: ('key' | 'bpm' | 'structure' | 'energy')[] = ['key', 'bpm'], userInitiated: boolean = true): Promise<string> {
+    return this.jobManager.createBatchAnalyzeJob(trackIds, analysisTypes, userInitiated);
+  }
+
+  // TODO: Implement export jobs when createBatchExportJob is added to JobManager
+  // async createExportJob(trackIds: string[], format: 'rekordbox' | 'serato' | 'traktor' | 'usb', destination: string, options?: Record<string, any>, userInitiated: boolean = true): Promise<string> {
+  //   return this.jobManager.createBatchExportJob(trackIds, format, destination, options, userInitiated);
+  // }
+
+  async getActiveJobs(): Promise<any[]> {
+    return this.jobManager.getJobsByStatus('running');
+  }
+
+  async getQueuedJobs(): Promise<any[]> {
+    return this.jobManager.getJobsByStatus('queued');
+  }
+
+  async getAllJobs(): Promise<any[]> {
+    return [
+      ...this.jobManager.getJobsByStatus('created'),
+      ...this.jobManager.getJobsByStatus('queued'),
+      ...this.jobManager.getJobsByStatus('running'),
+      ...this.jobManager.getJobsByStatus('completed'),
+      ...this.jobManager.getJobsByStatus('failed'),
+      ...this.jobManager.getJobsByStatus('cancelled'),
+      ...this.jobManager.getJobsByStatus('timeout')
+    ];
+  }
+
+  async getJobById(jobId: string): Promise<any | null> {
+    return this.jobManager.getJob(jobId);
+  }
+
+  async cancelJob(jobId: string): Promise<boolean> {
+    return this.jobManager.cancelJob(jobId);
+  }
+
+  async retryJob(jobId: string): Promise<boolean> {
+    return this.jobManager.retryJob(jobId);
+  }
+
+  async abortAllJobs(): Promise<void> {
+    console.log('[ENGINE] 🚫 Aborting all active jobs...');
+    // Cancel all running and queued jobs
+    const activeJobs = [
+      ...this.jobManager.getJobsByStatus('running'),
+      ...this.jobManager.getJobsByStatus('queued')
+    ];
+
+    for (const job of activeJobs) {
+      await this.jobManager.cancelJob(job.id);
+    }
+
+    console.log(`[ENGINE] ✅ Cancelled ${activeJobs.length} jobs`);
+  }
+
   close(): void {
+    // TODO: Add jobManager.close() method when implemented
     this.workerPool.close();
     this.db.close();
+  }
+
+  // ============================================================================
+  // TEST SUPPORT METHODS (for integration tests)
+  // ============================================================================
+
+  /** Get job manager for test access */
+  getJobManager(): JobManager {
+    return this.jobManager;
+  }
+
+  /** Get database for test access */
+  getDatabase(): CleanCueDatabase {
+    return this.db;
+  }
+
+  /** Queue a single job for processing */
+  async queueJob(jobId: string): Promise<void> {
+    return this.jobManager.queueJob(jobId);
+  }
+
+  /** Get job statistics */
+  getJobQueueStats() {
+    return this.jobManager.getQueueStats();
+  }
+
+  /** Force process the job queue (for testing) */
+  async processJobQueue(): Promise<void> {
+    // This is a test helper - in production the queue processes automatically
+    const queuedJobs = this.jobManager.getJobsByStatus('queued');
+    for (const job of queuedJobs) {
+      await this.jobManager.queueJob(job.id);
+    }
+  }
+
+  /** Export tracks (for testing) */
+  async exportTracks(trackIds: string[], options: { format: string; destination?: string; [key: string]: any }): Promise<string> {
+    // Create export job using JobManager
+    return this.jobManager.createExportJob(
+      trackIds,
+      options.format,
+      options.destination || '/tmp/exports',
+      undefined, // parentJobId
+      options
+    );
   }
 }

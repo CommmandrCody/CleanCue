@@ -8,9 +8,14 @@ export class ConfigManager {
   private configPath: string;
 
   constructor(configPath?: string) {
+    console.log(`[CONFIG] ===== CONFIG CONSTRUCTOR CALLED =====`);
     this.configPath = configPath || this.getDefaultConfigPath();
+    console.log(`[CONFIG] Config path: ${this.configPath}`);
     this.config = this.getDefaultConfig();
+    console.log(`[CONFIG] Default config loaded, scanning extensions:`, this.config.scanning.extensions);
+    console.log(`[CONFIG] Calling loadConfig() asynchronously...`);
     this.loadConfig();
+    console.log(`[CONFIG] Constructor finished (loadConfig is async!)`);
   }
 
   private getDefaultConfigPath(): string {
@@ -107,26 +112,38 @@ export class ConfigManager {
   }
 
   private async loadConfig(): Promise<void> {
+    console.log(`[CONFIG] ===== LOADCONFIG STARTED =====`);
     try {
       // Ensure config directory exists
       const configDir = path.dirname(this.configPath);
+      console.log(`[CONFIG] Ensuring config directory exists: ${configDir}`);
       await fs.mkdir(configDir, { recursive: true, mode: 0o755 });
 
       // Try to load existing config
+      console.log(`[CONFIG] Attempting to read config file: ${this.configPath}`);
       const configData = await fs.readFile(this.configPath, 'utf8');
+      console.log(`[CONFIG] Config file read successfully, parsing JSON...`);
       const loadedConfig = JSON.parse(configData);
-      
+      console.log(`[CONFIG] Loaded config scanning extensions:`, loadedConfig?.scanning?.extensions);
+
       // Merge with defaults to ensure all properties exist
+      console.log(`[CONFIG] Merging with defaults...`);
       this.config = this.mergeConfig(this.config, loadedConfig);
+      console.log(`[CONFIG] ✅ Config loaded and merged successfully!`);
+      console.log(`[CONFIG] Final scanning extensions:`, this.config.scanning.extensions);
     } catch (error) {
+      console.log(`[CONFIG] ❌ Failed to load config file:`, (error as Error).message);
       // Config file doesn't exist or is invalid, use defaults
       if ((error as Error).message.includes('ENOENT')) {
+        console.log(`[CONFIG] Config file doesn't exist, creating with defaults...`);
         // File doesn't exist, create it with defaults
         await this.saveConfig();
+        console.log(`[CONFIG] ✅ Default config file created`);
       } else {
-        console.warn('Failed to load config, using defaults:', (error as Error).message);
+        console.warn('[CONFIG] Failed to load config, using defaults:', (error as Error).message);
       }
     }
+    console.log(`[CONFIG] ===== LOADCONFIG FINISHED =====`);
   }
 
   private mergeConfig(defaultConfig: any, userConfig: any): any {

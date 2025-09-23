@@ -73,9 +73,19 @@ export class StemSeparationService {
   private async ensureBaseDirectory(): Promise<void> {
     try {
       await fs.mkdir(this.outputBaseDir, { recursive: true, mode: 0o755 });
-      await fs.chmod(this.outputBaseDir, 0o755);
+
+      // Try to set permissions, but don't fail if it doesn't work
+      try {
+        await fs.chmod(this.outputBaseDir, 0o755);
+      } catch (chmodError) {
+        // Ignore chmod errors - they're common on macOS and don't prevent functionality
+        console.debug('Could not set permissions on stems directory (non-critical):', chmodError.code);
+      }
     } catch (error) {
-      console.warn('Could not create/set permissions for base stems directory:', error);
+      // Only log if directory creation fails
+      if (error.code !== 'EEXIST') {
+        console.warn('Could not create base stems directory:', error);
+      }
     }
   }
 

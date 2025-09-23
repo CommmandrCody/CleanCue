@@ -312,6 +312,10 @@ export class WorkerPool extends EventEmitter {
     this.clearQueue();
   }
 
+  stopAllJobs(): void {
+    this.killAllJobs();
+  }
+
   close() {
     // Stop the watchdog
     if (this.watchdogTimer) {

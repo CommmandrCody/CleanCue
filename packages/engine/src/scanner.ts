@@ -93,37 +93,52 @@ export class FileScanner {
   }
 
   async scanPaths(paths: string[]): Promise<ScannedFile[]> {
+    console.log(`[SCANNER] ===== SCANPATHS CALLED =====`);
+    console.log(`[SCANNER] Input paths:`, paths);
+    console.log(`[SCANNER] Scanner config:`, JSON.stringify(this.config, null, 2));
+
     const allFiles: ScannedFile[] = [];
-    
+
     for (const scanPath of paths) {
+      console.log(`[SCANNER] ===== SCANNING PATH: ${scanPath} =====`);
       const files = await this.scanPath(scanPath);
+      console.log(`[SCANNER] Path ${scanPath} returned ${files.length} files`);
       allFiles.push(...files);
     }
-    
+
+    console.log(`[SCANNER] ===== SCANPATHS COMPLETE =====`);
+    console.log(`[SCANNER] Total files found: ${allFiles.length}`);
     return allFiles;
   }
 
   private async scanPath(scanPath: string): Promise<ScannedFile[]> {
     const files: ScannedFile[] = [];
 
-    console.log(`Scanning path: ${scanPath}`);
+    console.log(`[SCANNER] ===== SCANPATH STARTED: ${scanPath} =====`);
+    console.log(`[SCANNER] Extensions to look for:`, this.config.extensions);
 
     try {
       const stat = await fs.stat(scanPath);
 
       if (stat.isFile()) {
-        console.log(`Path is file: ${scanPath}`);
+        console.log(`[SCANNER] Path is file: ${scanPath}`);
+        console.log(`[SCANNER] Checking if ${scanPath} is audio file...`);
         if (this.isAudioFile(scanPath)) {
-          console.log(`Processing audio file: ${scanPath}`);
+          console.log(`[SCANNER] ✅ Processing audio file: ${scanPath}`);
           const file = await this.processFile(scanPath, stat);
-          if (file) files.push(file);
+          if (file) {
+            files.push(file);
+            console.log(`[SCANNER] ✅ File processed successfully: ${scanPath}`);
+          } else {
+            console.log(`[SCANNER] ❌ File processing failed: ${scanPath}`);
+          }
         } else {
-          console.log(`File is not audio format: ${scanPath}`);
+          console.log(`[SCANNER] ❌ File is not audio format: ${scanPath}`);
         }
       } else if (stat.isDirectory()) {
-        console.log(`Path is directory, scanning recursively: ${scanPath}`);
+        console.log(`[SCANNER] Path is directory, scanning recursively: ${scanPath}`);
         const dirFiles = await this.scanDirectory(scanPath);
-        console.log(`Found ${dirFiles.length} files in directory: ${scanPath}`);
+        console.log(`[SCANNER] Directory scan found ${dirFiles.length} files in: ${scanPath}`);
         files.push(...dirFiles);
       }
     } catch (error) {
@@ -208,7 +223,12 @@ export class FileScanner {
 
   private isAudioFile(filePath: string): boolean {
     const ext = path.extname(filePath).toLowerCase();
-    return this.config.extensions.includes(ext);
+    const isAudio = this.config.extensions.includes(ext);
+    console.log(`[SCANNER] isAudioFile check: ${filePath}`);
+    console.log(`[SCANNER] - Extension: "${ext}"`);
+    console.log(`[SCANNER] - Valid extensions: ${JSON.stringify(this.config.extensions)}`);
+    console.log(`[SCANNER] - Is audio: ${isAudio}`);
+    return isAudio;
   }
 
   private async calculateFileHash(filePath: string): Promise<string> {
