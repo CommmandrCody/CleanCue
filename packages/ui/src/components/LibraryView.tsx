@@ -3,6 +3,7 @@ import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, S
 import clsx from 'clsx'
 import { ExportDialog } from './ExportDialog'
 import { StemSeparationDialog } from './StemSeparationDialog'
+import { audioService } from '../services/AudioService'
 
 interface StemFile {
   type: 'vocals' | 'drums' | 'bass' | 'other' | 'piano' | 'guitar'
@@ -325,8 +326,11 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   }
 
   const handlePlayTrack = (track: Track) => {
+    const trackIndex = filteredTracks.findIndex(t => t.id === track.id)
+    audioService.playTrack(filteredTracks, trackIndex)
+
+    // Also call parent callback for compatibility
     if (onPlayTrack) {
-      const trackIndex = filteredTracks.findIndex(t => t.id === track.id)
       onPlayTrack(filteredTracks, trackIndex)
     }
   }
