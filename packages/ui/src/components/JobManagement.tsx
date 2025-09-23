@@ -62,7 +62,7 @@ interface JobManagementProps {
   onPlayTrack?: (tracks: Track[], startIndex?: number) => void
 }
 
-export function JobManagement({ onPlayTrack }: JobManagementProps) {
+export function JobManagement({ }: JobManagementProps) {
   const [jobs, setJobs] = useState<BackgroundJob[]>([])
   const [jobStats, setJobStats] = useState<JobStats>({
     total: 0, created: 0, queued: 0, running: 0,

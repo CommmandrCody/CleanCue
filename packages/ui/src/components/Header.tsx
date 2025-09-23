@@ -28,7 +28,7 @@ export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onSt
           </div>
           <div className="drag-region">
             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">CleanCue</h1>
-            <p className="text-sm text-gray-300">Professional DJ Library</p>
+            <p className="text-sm text-gray-300">DJ Library Manager</p>
           </div>
         </div>
 

@@ -502,97 +502,85 @@ ${sortedTracks.map((track, i) =>
             </button>
           </div>
 
-          <button
-            onClick={toggleSelectAll}
-            disabled={filteredTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              filteredTracks.length > 0
-                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
-          >
-            {selectedTracks.length === filteredTracks.length && filteredTracks.length > 0 ? (
-              <CheckSquare className="h-4 w-4 inline mr-2" />
-            ) : (
-              <Square className="h-4 w-4 inline mr-2" />
-            )}
-            {selectedTracks.length === filteredTracks.length && filteredTracks.length > 0 ? 'Deselect All' : 'Select All'}
-          </button>
+          {/* Primary Actions */}
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={toggleSelectAll}
+              disabled={filteredTracks.length === 0}
+              className={clsx(
+                'px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                filteredTracks.length > 0
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              )}
+            >
+              {selectedTracks.length === filteredTracks.length && filteredTracks.length > 0 ? (
+                <CheckSquare className="h-4 w-4 inline mr-1" />
+              ) : (
+                <Square className="h-4 w-4 inline mr-1" />
+              )}
+              {selectedTracks.length === filteredTracks.length && filteredTracks.length > 0 ? 'Deselect' : 'Select All'}
+            </button>
 
-          <button
-            onClick={handleAnalyzeClick}
-            disabled={selectedTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0
-                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
-            title="Analyze selected tracks for BPM, key, and energy"
-          >
-            <BarChart3 className="h-4 w-4 inline mr-2" />
-            Analyze & Update ({selectedTracks.length})
-          </button>
+            {selectedTracks.length > 0 && (
+              <>
+                <button
+                  onClick={handleAnalyzeClick}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-sm font-medium transition-colors"
+                  title="Analyze selected tracks for BPM, key, and energy"
+                >
+                  <BarChart3 className="h-4 w-4 inline mr-2" />
+                  Analyze ({selectedTracks.length})
+                </button>
 
-          <button
-            onClick={() => setShowStemSeparationDialog(true)}
-            disabled={selectedTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0
-                ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
-            title="Separate selected tracks into stems (vocals, drums, bass, other)"
-          >
-            <Music2 className="h-4 w-4 inline mr-2" />
-            STEM Separation ({selectedTracks.length})
-          </button>
+                {/* Secondary Actions - Grouped in dropdown */}
+                <div className="relative group">
+                  <button className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm font-medium transition-colors flex items-center">
+                    More
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </button>
 
-          <button
-            onClick={handleDeleteClick}
-            disabled={selectedTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
-          >
-            <Trash2 className="h-4 w-4 inline mr-2" />
-            Delete ({selectedTracks.length})
-          </button>
+                  <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 min-w-48">
+                    <button
+                      onClick={() => setShowExportDialog(true)}
+                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export to DJ Software
+                    </button>
 
-          <button
-            onClick={() => setShowExportDialog(true)}
-            disabled={selectedTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0
-                ? 'bg-primary-600 hover:bg-primary-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-            )}
-          >
-            <Download className="h-4 w-4 inline mr-2" />
-            Export ({selectedTracks.length})
-          </button>
+                    <button
+                      onClick={() => generateSmartMix()}
+                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
+                      title="Generate smart DJ mix with harmonic analysis"
+                    >
+                      <Zap className="h-4 w-4 mr-2" />
+                      Generate Smart Mix
+                    </button>
 
-          {/* 🎧 DJ SMART PLAYLIST - Professional Mix Generation */}
-          <button
-            onClick={() => generateSmartMix()}
-            disabled={selectedTracks.length === 0}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    <button
+                      onClick={() => setShowStemSeparationDialog(true)}
+                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
+                      title="Separate tracks into stems"
+                    >
+                      <Music2 className="h-4 w-4 mr-2" />
+                      STEM Separation
+                    </button>
+
+                    <div className="border-t border-gray-700"></div>
+
+                    <button
+                      onClick={handleDeleteClick}
+                      className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/20 flex items-center text-sm"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete from Library
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
-            title="Generate smart DJ mix with harmonic and energy flow analysis"
-          >
-            <Zap className="h-4 w-4 inline mr-2" />
-            Smart Mix ({selectedTracks.length})
-          </button>
+          </div>
         </div>
       </div>
 

@@ -2,7 +2,7 @@
   "name": "cleancue",
   "version": "0.2.3",
   "private": true,
-  "description": "Open-source, offline-first DJ library management toolkit",
+  "description": "DJ Library Manager",
   "author": "CommndrCody",
   "license": "MIT",
   "workspaces": [

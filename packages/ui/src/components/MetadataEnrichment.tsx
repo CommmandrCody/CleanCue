@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, X, Download, Music, Image, Volume2, Database, CheckCircle, Clock } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Play, X, Download, Music, Image, Volume2, Database, CheckCircle, Clock } from 'lucide-react'
 import clsx from 'clsx'
 
 interface EnrichmentJob {
@@ -465,42 +465,7 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
               </div>
             )}
 
-            {/* Audio Player */}
-            {currentTrack && (
-              <div className="p-4 border-b border-gray-700 bg-gray-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={togglePlayback}
-                      className="p-2 bg-blue-600 hover:bg-blue-700 rounded-full transition-colors"
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </button>
-                    <div>
-                      <div className="font-medium text-sm">{currentTrack.title || 'Unknown Track'}</div>
-                      <div className="text-xs text-gray-400">{currentTrack.artist || 'Unknown Artist'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Volume2 className="h-4 w-4 text-gray-400" />
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={volume}
-                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                      className="w-20 slider"
-                    />
-                  </div>
-                </div>
-{/* Audio element removed - using global player */}
-              </div>
-            )}
+{/* Audio player removed - using global player from App.tsx */}
 
             {/* Job History */}
             <div className="flex-1 p-6 overflow-y-auto">
@@ -540,12 +505,8 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              // Mock track data for demo
-                              playTrack({
-                                path: `/mock/track/${job.id}`,
-                                title: `Sample Track ${job.trackIds.length}`,
-                                artist: 'Demo Artist'
-                              })
+                              // Audio player removed - using global player from App.tsx
+                              console.log('Play button clicked for job:', job.id)
                             }}
                             className="p-1 hover:bg-gray-600 rounded transition-colors"
                           >

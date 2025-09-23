@@ -53,21 +53,21 @@ class CleanCueApp {
         let engineSource = 'unknown';
 
         try {
-          // Try 1: Normal import from node_modules
-          CleanCueEngine = require('@cleancue/engine').CleanCueEngine;
-          engineSource = 'node_modules';
-          console.log('✅ Engine loaded from node_modules');
-        } catch (error) {
-          console.log('❌ Failed to load engine from node_modules:', (error as Error).message);
+          // Try 1: Development fallback - direct from packages (most reliable in dev)
+          const devEnginePath = path.resolve(__dirname, '../../../packages/engine/dist/engine.js');
+          CleanCueEngine = require(devEnginePath).CleanCueEngine;
+          engineSource = 'development';
+          console.log('✅ Engine loaded from development packages');
+        } catch (devError) {
+          console.log('❌ Failed to load engine from development packages:', (devError as Error).message);
 
           try {
-            // Try 2: Development fallback - direct from packages
-            const devEnginePath = path.resolve(__dirname, '../../../packages/engine/dist/engine.js');
-            CleanCueEngine = require(devEnginePath).CleanCueEngine;
-            engineSource = 'development';
-            console.log('✅ Engine loaded from development packages');
-          } catch (devError) {
-            console.log('❌ Failed to load engine from development packages:', (devError as Error).message);
+            // Try 2: Normal import from node_modules
+            CleanCueEngine = require('@cleancue/engine').CleanCueEngine;
+            engineSource = 'node_modules';
+            console.log('✅ Engine loaded from node_modules');
+          } catch (error) {
+            console.log('❌ Failed to load engine from node_modules:', (error as Error).message);
 
             try {
               // Try 3: Load from extraResources in production
@@ -92,6 +92,7 @@ class CleanCueApp {
         }
 
         console.log(`🔧 Engine source: ${engineSource}`);
+        this.sendLogToRenderer('info', `🔧 Engine loaded from: ${engineSource}`);
 
         // Initialize with custom config path to set workers path before engine creates services
         this.engine = new CleanCueEngine()
@@ -773,28 +774,38 @@ class CleanCueApp {
 
     ipcMain.handle('engine-analyze', async (_, trackIds: string[]) => {
       console.log(`[MAIN] engine-analyze called with ${trackIds.length} tracks:`, trackIds)
+      this.sendLogToRenderer('info', `🎵 Starting analysis of ${trackIds.length} tracks...`)
+
       try {
         await this.initializeEngine()
         if (!this.engine) {
           console.error('[MAIN] Engine not initialized for analysis')
+          this.sendLogToRenderer('error', '❌ Engine not initialized for analysis')
           return { success: false, error: 'Engine not initialized' }
         }
 
         console.log('[MAIN] Starting analysis for tracks...')
+        this.sendLogToRenderer('info', '🔍 Analyzing tracks for BPM, key, and energy...')
+
         // Analyze specific tracks with BPM and key detection
         let analyzed = 0
         for (const trackId of trackIds) {
           try {
             console.log(`[MAIN] Analyzing track ${trackId}...`)
+            this.sendLogToRenderer('info', `🎧 Analyzing track ${trackId.substring(0, 8)}...`)
+
             await this.engine.analyzeTrack(trackId, ['tempo', 'key', 'energy'])
             analyzed++
             console.log(`[MAIN] Track ${trackId} analyzed successfully`)
+            this.sendLogToRenderer('info', `✅ Track analyzed (${analyzed}/${trackIds.length})`)
           } catch (error) {
             console.warn(`[MAIN] Failed to analyze track ${trackId}:`, error)
+            this.sendLogToRenderer('warn', `⚠️ Failed to analyze track ${trackId.substring(0, 8)}: ${(error as Error).message}`)
           }
         }
 
         console.log(`[MAIN] Analysis complete. ${analyzed}/${trackIds.length} tracks analyzed`)
+        this.sendLogToRenderer('info', `🎯 Analysis complete: ${analyzed}/${trackIds.length} tracks analyzed successfully`)
         return { success: true, analyzed }
       } catch (error) {
         console.error('Analysis failed:', error)
