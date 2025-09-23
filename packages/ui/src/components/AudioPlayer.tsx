@@ -1,6 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
-import { audioService, type Track, type AudioState } from '../services/AudioService'
+
+interface Track {
+  id: string
+  title: string
+  artist: string
+  album?: string
+  path: string
+  duration?: number
+}
 
 interface AudioPlayerProps {
   tracks: Track[]
@@ -10,54 +18,100 @@ interface AudioPlayerProps {
 }
 
 export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose }: AudioPlayerProps) {
-  const [audioState, setAudioState] = useState<AudioState>(audioService.getState())
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(0.3)
+  const [isMuted, setIsMuted] = useState(false)
+
+  const currentTrack = tracks[currentTrackIndex]
 
   useEffect(() => {
-    const unsubscribe = audioService.subscribe(setAudioState)
-    return unsubscribe
-  }, [])
+    const audio = audioRef.current
+    if (!audio || !currentTrack) return
 
-  // Sync with external track changes
-  useEffect(() => {
-    if (tracks.length > 0 && currentTrackIndex >= 0) {
-      const currentTrack = tracks[currentTrackIndex]
-      if (!audioState.currentTrack || audioState.currentTrack.id !== currentTrack.id) {
-        audioService.playTrack(tracks, currentTrackIndex)
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
+    const handleLoadedMetadata = () => setDuration(audio.duration)
+    const handleEnded = () => {
+      if (currentTrackIndex < tracks.length - 1) {
+        onTrackChange(currentTrackIndex + 1)
+      } else {
+        setIsPlaying(false)
       }
     }
-  }, [tracks, currentTrackIndex])
 
-  // Notify parent of track changes from audio service
-  useEffect(() => {
-    if (audioState.currentTrackIndex !== currentTrackIndex) {
-      onTrackChange(audioState.currentTrackIndex)
+    audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('ended', handleEnded)
+
+    // Load new track
+    audio.src = `file://${currentTrack.path}`
+    audio.load()
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('ended', handleEnded)
     }
-  }, [audioState.currentTrackIndex, currentTrackIndex, onTrackChange])
+  }, [currentTrack, currentTrackIndex, onTrackChange])
 
-  const togglePlayPause = () => {
-    audioService.togglePlayPause()
+  // Update volume
+  useEffect(() => {
+    const audio = audioRef.current
+    if (audio) {
+      audio.volume = isMuted ? 0 : volume
+    }
+  }, [volume, isMuted])
+
+  const togglePlayPause = async () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    try {
+      if (isPlaying) {
+        audio.pause()
+        setIsPlaying(false)
+      } else {
+        await audio.play()
+        setIsPlaying(true)
+      }
+    } catch (error) {
+      console.error('Failed to toggle play/pause:', error)
+    }
   }
 
   const handlePrevious = () => {
-    audioService.previousTrack()
+    if (currentTrackIndex > 0) {
+      onTrackChange(currentTrackIndex - 1)
+    }
   }
 
   const handleNext = () => {
-    audioService.nextTrack()
+    if (currentTrackIndex < tracks.length - 1) {
+      onTrackChange(currentTrackIndex + 1)
+    }
   }
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = (parseFloat(e.target.value) / 100) * audioState.duration
-    audioService.seek(time)
+    const audio = audioRef.current
+    if (!audio) return
+
+    const newTime = (parseFloat(e.target.value) / 100) * duration
+    audio.currentTime = newTime
+    setCurrentTime(newTime)
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value) / 100
-    audioService.setVolume(newVolume)
+    setVolume(newVolume)
+    if (newVolume > 0) {
+      setIsMuted(false)
+    }
   }
 
   const toggleMute = () => {
-    audioService.toggleMute()
+    setIsMuted(!isMuted)
   }
 
   const formatTime = (time: number) => {
@@ -67,12 +121,13 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  const progress = audioState.duration > 0 ? (audioState.currentTime / audioState.duration) * 100 : 0
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
-  if (!audioState.currentTrack) return null
+  if (!currentTrack) return null
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 z-50">
+      <audio ref={audioRef} />
       {/* Player Controls */}
       <div className="p-4">
         <div className="max-w-screen-xl mx-auto">
@@ -80,10 +135,10 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
             {/* Track Info */}
             <div className="flex items-center space-x-4 min-w-0 flex-1">
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-white truncate">{audioState.currentTrack.title}</div>
-                <div className="text-sm text-gray-400 truncate">{audioState.currentTrack.artist}</div>
-                {audioState.currentTrack.album && (
-                  <div className="text-xs text-gray-500 truncate">{audioState.currentTrack.album}</div>
+                <div className="font-medium text-white truncate">{currentTrack.title}</div>
+                <div className="text-sm text-gray-400 truncate">{currentTrack.artist}</div>
+                {currentTrack.album && (
+                  <div className="text-xs text-gray-500 truncate">{currentTrack.album}</div>
                 )}
               </div>
             </div>
@@ -92,7 +147,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
             <div className="flex items-center space-x-4">
               <button
                 onClick={handlePrevious}
-                disabled={audioState.currentTrackIndex === 0}
+                disabled={currentTrackIndex === 0}
                 className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <SkipBack className="h-5 w-5" />
@@ -102,12 +157,12 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
                 onClick={togglePlayPause}
                 className="p-4 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
               >
-                {audioState.isPlaying ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
+                {isPlaying ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
               </button>
 
               <button
                 onClick={handleNext}
-                disabled={audioState.currentTrackIndex === audioState.playlist.length - 1}
+                disabled={currentTrackIndex === tracks.length - 1}
                 className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <SkipForward className="h-5 w-5" />
@@ -117,7 +172,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
             {/* Progress */}
             <div className="flex items-center space-x-3 min-w-0 flex-1">
               <span className="text-sm text-gray-400 tabular-nums">
-                {formatTime(audioState.currentTime)}
+                {formatTime(currentTime)}
               </span>
 
               <div className="flex-1">
@@ -135,7 +190,7 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
               </div>
 
               <span className="text-sm text-gray-400 tabular-nums">
-                {formatTime(audioState.duration)}
+                {formatTime(duration)}
               </span>
             </div>
 
@@ -146,25 +201,30 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
                 onClick={toggleMute}
                 className="p-2 text-gray-400 hover:text-white transition-colors"
               >
-                {audioState.isMuted || audioState.volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </button>
 
               <input
                 type="range"
                 min="0"
                 max="100"
-                value={audioState.isMuted ? 0 : audioState.volume * 100}
+                value={isMuted ? 0 : volume * 100}
                 onChange={handleVolumeChange}
                 className="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${audioState.isMuted ? 0 : audioState.volume * 100}%, #374151 ${audioState.isMuted ? 0 : audioState.volume * 100}%, #374151 100%)`
+                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${isMuted ? 0 : volume * 100}%, #374151 ${isMuted ? 0 : volume * 100}%, #374151 100%)`
                 }}
               />
 
               {/* Close Button */}
               <button
                 onClick={() => {
-                  audioService.stop()
+                  const audio = audioRef.current
+                  if (audio) {
+                    audio.pause()
+                    audio.currentTime = 0
+                  }
+                  setIsPlaying(false)
                   onClose()
                 }}
                 className="p-2 text-gray-400 hover:text-white transition-colors ml-4"

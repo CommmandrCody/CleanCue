@@ -746,11 +746,11 @@ class CleanCueApp {
         console.log('[MAIN] Starting analysis for tracks...')
         this.sendLogToRenderer('info', '🔍 Creating analysis jobs for tracks...')
 
-        // Use the engine's job system for analysis
-        await this.engine.analyzeSelectedTracks(trackIds, ['tempo', 'key', 'energy'])
+        // Use the engine's job system for analysis - create proper jobs that show in queue
+        const jobId = await this.engine.createAnalysisJobs(trackIds, ['key', 'bpm', 'energy'], true)
 
-        console.log(`[MAIN] Analysis jobs created for ${trackIds.length} tracks`)
-        this.sendLogToRenderer('info', `🎯 Analysis jobs created for ${trackIds.length} tracks - check Analysis view for progress`)
+        console.log(`[MAIN] Analysis job created with ID: ${jobId} for ${trackIds.length} tracks`)
+        this.sendLogToRenderer('info', `🎯 Analysis job created for ${trackIds.length} tracks - check Analysis view for progress`)
         return { success: true, analyzed: trackIds.length }
       } catch (error) {
         console.error('Analysis failed:', error)
