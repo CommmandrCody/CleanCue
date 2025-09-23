@@ -48,51 +48,10 @@ class CleanCueApp {
 
         console.log('Workers path:', workersPath)
 
-        // BULLETPROOF ENGINE LOADING - Multiple fallbacks to prevent failures
-        let CleanCueEngine;
-        let engineSource = 'unknown';
-
-        try {
-          // Try 1: Development fallback - direct from packages (most reliable in dev)
-          const devEnginePath = path.resolve(__dirname, '../../../packages/engine/dist/engine.js');
-          CleanCueEngine = require(devEnginePath).CleanCueEngine;
-          engineSource = 'development';
-          console.log('✅ Engine loaded from development packages');
-        } catch (devError) {
-          console.log('❌ Failed to load engine from development packages:', (devError as Error).message);
-
-          try {
-            // Try 2: Normal import from node_modules
-            CleanCueEngine = require('@cleancue/engine').CleanCueEngine;
-            engineSource = 'node_modules';
-            console.log('✅ Engine loaded from node_modules');
-          } catch (error) {
-            console.log('❌ Failed to load engine from node_modules:', (error as Error).message);
-
-            try {
-              // Try 3: Load from extraResources in production
-              const enginePath = path.join(process.resourcesPath, 'engine', 'dist', 'engine.js');
-              CleanCueEngine = require(enginePath).CleanCueEngine;
-              engineSource = 'extraResources';
-              console.log('✅ Engine loaded from extraResources');
-            } catch (resourceError) {
-              console.log('❌ Failed to load engine from extraResources:', (resourceError as Error).message);
-
-              try {
-                // Try 4: BULLETPROOF FALLBACK - Embedded engine (always works)
-                CleanCueEngine = require('./embedded-engine.js').CleanCueEngine;
-                engineSource = 'embedded';
-                console.log('✅ Engine loaded from embedded fallback - SCAN WILL WORK');
-              } catch (embeddedError) {
-                console.error('❌ CRITICAL: Even embedded engine failed:', embeddedError);
-                throw new Error('Complete engine failure - this should never happen');
-              }
-            }
-          }
-        }
-
-        console.log(`🔧 Engine source: ${engineSource}`);
-        this.sendLogToRenderer('info', `🔧 Engine loaded from: ${engineSource}`);
+        // Load the real CleanCue engine
+        const { CleanCueEngine } = require('@cleancue/engine');
+        console.log('✅ CleanCue engine loaded');
+        this.sendLogToRenderer('info', '🔧 CleanCue engine loaded');
 
         // Initialize with custom config path to set workers path before engine creates services
         this.engine = new CleanCueEngine()
@@ -785,28 +744,14 @@ class CleanCueApp {
         }
 
         console.log('[MAIN] Starting analysis for tracks...')
-        this.sendLogToRenderer('info', '🔍 Analyzing tracks for BPM, key, and energy...')
+        this.sendLogToRenderer('info', '🔍 Creating analysis jobs for tracks...')
 
-        // Analyze specific tracks with BPM and key detection
-        let analyzed = 0
-        for (const trackId of trackIds) {
-          try {
-            console.log(`[MAIN] Analyzing track ${trackId}...`)
-            this.sendLogToRenderer('info', `🎧 Analyzing track ${trackId.substring(0, 8)}...`)
+        // Use the engine's job system for analysis
+        await this.engine.analyzeSelectedTracks(trackIds, ['tempo', 'key', 'energy'])
 
-            await this.engine.analyzeTrack(trackId, ['tempo', 'key', 'energy'])
-            analyzed++
-            console.log(`[MAIN] Track ${trackId} analyzed successfully`)
-            this.sendLogToRenderer('info', `✅ Track analyzed (${analyzed}/${trackIds.length})`)
-          } catch (error) {
-            console.warn(`[MAIN] Failed to analyze track ${trackId}:`, error)
-            this.sendLogToRenderer('warn', `⚠️ Failed to analyze track ${trackId.substring(0, 8)}: ${(error as Error).message}`)
-          }
-        }
-
-        console.log(`[MAIN] Analysis complete. ${analyzed}/${trackIds.length} tracks analyzed`)
-        this.sendLogToRenderer('info', `🎯 Analysis complete: ${analyzed}/${trackIds.length} tracks analyzed successfully`)
-        return { success: true, analyzed }
+        console.log(`[MAIN] Analysis jobs created for ${trackIds.length} tracks`)
+        this.sendLogToRenderer('info', `🎯 Analysis jobs created for ${trackIds.length} tracks - check Analysis view for progress`)
+        return { success: true, analyzed: trackIds.length }
       } catch (error) {
         console.error('Analysis failed:', error)
         return { success: false, error: (error as Error).message }

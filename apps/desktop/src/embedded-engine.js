@@ -146,6 +146,7 @@ class EmbeddedCleanCueEngine {
   getLibraryHealth() { return []; }
   scanLibraryHealth() { return Promise.resolve({ success: true, issuesFound: 0 }); }
   getAllAnalysisJobs() { return []; }
+  getAllJobs() { return []; }
   getDuplicateGroups() { return []; }
   scanForDuplicates() { return Promise.resolve({ success: true }); }
   fixHealthIssue() { return Promise.resolve({ success: true, message: 'Fixed' }); }
