@@ -1,6 +1,6 @@
 # 🎧 CleanCue
 
-**Open-source DJ library management toolkit for the modern DJ**
+**DJ Library Manager**
 
 CleanCue helps DJs organize, analyze, and export their music collections across all major DJ software platforms. Built for DJs who have limited time and money but need professional library management tools.
 

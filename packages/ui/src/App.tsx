@@ -172,7 +172,7 @@ function AppContent() {
       case 'duplicates':
         return <DuplicateDetection />
       case 'analysis':
-        return <JobManagement />
+        return <JobManagement onPlayTrack={handlePlayTrack} />
       default:
         return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
     }

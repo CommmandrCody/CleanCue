@@ -166,9 +166,9 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
 
               <button
                 onClick={togglePlayPause}
-                className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors"
+                className="p-4 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
               >
-                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                {isPlaying ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
               </button>
 
               <button

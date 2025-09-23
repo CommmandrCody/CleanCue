@@ -74,40 +74,9 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
     cookiesConfigured: boolean
   }>({ installed: false, cookiesConfigured: false })
 
-  // Audio player state
-  const [currentTrack, setCurrentTrack] = useState<any>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [volume, setVolume] = useState(0.7)
-  const audioRef = useRef<HTMLAudioElement>(null)
+  // Removed conflicting audio player - using global player from App.tsx instead
 
-  // Audio player functions
-  const playTrack = (track: any) => {
-    if (audioRef.current) {
-      setCurrentTrack(track)
-      audioRef.current.src = `file://${track.path}`
-      audioRef.current.play()
-      setIsPlaying(true)
-    }
-  }
-
-  const togglePlayback = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause()
-        setIsPlaying(false)
-      } else {
-        audioRef.current.play()
-        setIsPlaying(true)
-      }
-    }
-  }
-
-  const handleVolumeChange = (newVolume: number) => {
-    setVolume(newVolume)
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume
-    }
-  }
+  // Audio controls removed - using global player
 
   useEffect(() => {
     if (!isOpen) return
@@ -529,7 +498,7 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
                     />
                   </div>
                 </div>
-                <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
+{/* Audio element removed - using global player */}
               </div>
             )}
 

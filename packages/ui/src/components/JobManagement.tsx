@@ -49,7 +49,20 @@ interface JobLogEntry {
   type: 'info' | 'success' | 'error' | 'warning'
 }
 
-export function JobManagement() {
+interface Track {
+  id: string
+  title: string
+  artist: string
+  album?: string
+  path: string
+  duration?: number
+}
+
+interface JobManagementProps {
+  onPlayTrack?: (tracks: Track[], startIndex?: number) => void
+}
+
+export function JobManagement({ onPlayTrack }: JobManagementProps) {
   const [jobs, setJobs] = useState<BackgroundJob[]>([])
   const [jobStats, setJobStats] = useState<JobStats>({
     total: 0, created: 0, queued: 0, running: 0,
@@ -386,16 +399,8 @@ export function JobManagement() {
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-4 lg:grid-cols-8 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-primary-400">{jobStats.total}</div>
-          <div className="text-sm text-gray-400">Total</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-cyan-400">{jobStats.queued}</div>
-          <div className="text-sm text-gray-400">Queued</div>
-        </div>
+      {/* Essential Stats Only */}
+      <div className="grid grid-cols-3 gap-4">
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-2xl font-bold text-blue-400">{jobStats.running}</div>
           <div className="text-sm text-gray-400">Running</div>
@@ -407,18 +412,6 @@ export function JobManagement() {
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-2xl font-bold text-red-400">{jobStats.failed}</div>
           <div className="text-sm text-gray-400">Failed</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-orange-400">{jobStats.cancelled}</div>
-          <div className="text-sm text-gray-400">Cancelled</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-yellow-400">{jobStats.timeout}</div>
-          <div className="text-sm text-gray-400">Timeout</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-gray-400">{jobStats.created}</div>
-          <div className="text-sm text-gray-400">Created</div>
         </div>
       </div>
 
