@@ -25,6 +25,7 @@ export interface ExportResult {
   playlistsExported: number;
   warnings: string[];
   success: boolean;
+  error?: string;
 }
 
 export class DJSoftwareExporter {
@@ -77,7 +78,8 @@ export class DJSoftwareExporter {
         tracksExported: 0,
         playlistsExported: 0,
         warnings: [],
-        success: false
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -180,7 +182,7 @@ export class DJSoftwareExporter {
     await fs.writeFile(cratePath, crateContent);
 
     // Export metadata for Serato
-    const metadataPath = options.outputPath.replace(/\\.[^.]+$/, '_serato_metadata.txt');
+    const metadataPath = options.outputPath.replace(/\.[^.]+$/, '_serato_metadata.txt');
     const seratoMetadata = this.generateSeratoMetadata(tracks);
     await fs.writeFile(metadataPath, seratoMetadata, 'utf8');
 
@@ -201,7 +203,7 @@ export class DJSoftwareExporter {
 
     // Generate Engine DJ XML
     const xmlContent = this.generateEngineXML(tracks, playlists, playlistTracks, cues, options);
-    const xmlPath = options.outputPath.replace(/\\.[^.]+$/, '.xml');
+    const xmlPath = options.outputPath.replace(/\.[^.]+$/, '.xml');
     await fs.writeFile(xmlPath, xmlContent, 'utf8');
 
     // Also create M3U for compatibility
@@ -225,7 +227,7 @@ export class DJSoftwareExporter {
 
     // Generate Rekordbox XML
     const xmlContent = this.generateRekordboxXML(tracks, playlists, playlistTracks, cues, options);
-    const xmlPath = options.outputPath.replace(/\\.[^.]+$/, '.xml');
+    const xmlPath = options.outputPath.replace(/\.[^.]+$/, '.xml');
     await fs.writeFile(xmlPath, xmlContent, 'utf8');
 
     warnings.push('Import the XML file into Rekordbox via File > Import > Import Collection');
