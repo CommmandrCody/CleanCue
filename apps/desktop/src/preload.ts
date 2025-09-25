@@ -20,7 +20,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineGetTracks: () => ipcRenderer.invoke('engine-get-tracks'),
   engineClearLibrary: () => ipcRenderer.invoke('engine-clear-library'),
   getAllTracks: () => ipcRenderer.invoke('get-all-tracks'),
-  engineAnalyze: (trackIds: string[]) => ipcRenderer.invoke('engine-analyze', trackIds),
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
   exportTracks: (trackIds: string[], options: any) => ipcRenderer.invoke('export-tracks', trackIds, options),
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
@@ -30,6 +29,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   detectDJSoftware: () => ipcRenderer.invoke('detect-dj-software'),
   saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
   fixHealthIssue: (issueId: string) => ipcRenderer.invoke('fix-health-issue', issueId),
+
+  // Key notation settings
+  setKeyNotation: (notation: 'sharp' | 'flat') => ipcRenderer.invoke('set-key-notation', notation),
+  getKeyNotation: () => ipcRenderer.invoke('get-key-notation'),
   importLibrarySource: (options: {
     sourcePath: string
     mode: 'copy' | 'link'
@@ -41,7 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('import-library-source', options),
 
   // Additional API methods for UI components
-  getAnalysisJobs: () => ipcRenderer.invoke('get-analysis-jobs'),
+  getAnalysisJobs: () => ipcRenderer.invoke('getAnalysisJobs'),
   getLibraryHealth: () => ipcRenderer.invoke('get-library-health'),
   scanLibraryHealth: () => ipcRenderer.invoke('scan-library-health'),
 
@@ -55,8 +58,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   abortAllJobs: () => ipcRenderer.invoke('abort-all-jobs'),
   createScanJob: (paths: string[], extensions?: string[], userInitiated?: boolean) =>
     ipcRenderer.invoke('create-scan-job', paths, extensions, userInitiated),
-  createAnalysisJobs: (trackIds: string[], analysisTypes?: string[], userInitiated?: boolean) =>
-    ipcRenderer.invoke('create-analysis-jobs', trackIds, analysisTypes, userInitiated),
+  createAnalysisJobs: (trackIds: string[]) =>
+    ipcRenderer.invoke('createAnalysisJobs', trackIds),
 
   // STEM Separation operations
   stemCheckDependencies: () => ipcRenderer.invoke('stem-check-dependencies'),
@@ -112,7 +115,6 @@ export interface ElectronAPI {
   engineScan: (folderPath: string) => Promise<{ success: boolean; tracksFound: number; tracksAdded?: number; tracksUpdated?: number; errors?: string[]; error?: string }>
   engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
   getAllTracks: () => Promise<any[]>
-  engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
   engineExport: (options: any) => Promise<{ success: boolean; path: string }>
   exportTracks: (trackIds: string[], options: any) => Promise<{ success: boolean; path: string }>
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>

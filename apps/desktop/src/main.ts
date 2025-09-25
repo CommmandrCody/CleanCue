@@ -37,52 +37,25 @@ class CleanCueApp {
       console.log('Initializing real CleanCue engine...')
       try {
         // Determine correct workers path before initializing engine
-        let workersPath: string
-        if (app.isPackaged) {
-          // In packaged app, workers are in extraResources
-          workersPath = path.join(process.resourcesPath, 'workers')
-        } else {
-          // In development, workers are in packages directory
-          workersPath = path.resolve(__dirname, '../../../packages/workers')
-        }
-
-        console.log('Workers path:', workersPath)
-
-        // Load the real CleanCue engine
-        const { CleanCueEngine } = require('@cleancue/engine');
+        // Load the simplified CleanCue engine
+        const { CleanCueEngine } = require('@cleancue/simple-engine');
         console.log('✅ CleanCue engine loaded');
         this.sendLogToRenderer('info', '🔧 CleanCue engine loaded');
 
-        // Initialize with custom config path to set workers path before engine creates services
+        // Initialize the simplified engine (no workers or config needed)
         this.engine = new CleanCueEngine()
-
-        // Determine correct python path (use virtual environment if available)
-        const pythonPath = path.join(workersPath, 'venv', 'bin', 'python')
-
-        // Update config immediately before any services are initialized
-        this.engine.updateConfig({
-          workers: {
-            pythonPath: pythonPath,
-            workersPath: workersPath
-          }
-        })
-
-        // Initialize the database
         await this.engine.initialize()
 
-        // Add a small delay to ensure database is fully ready
-        await new Promise(resolve => setTimeout(resolve, 200))
-
-        // Verify database is working by testing a simple operation
+        // Simple readiness check
         try {
-          this.engine.getAllTracks()
-          console.log('Database readiness check passed')
+          await this.engine.getAllTracks()
+          console.log('Simple engine readiness check passed')
         } catch (error) {
-          console.warn('Database readiness check failed, adding extra delay:', error)
-          await new Promise(resolve => setTimeout(resolve, 500))
+          console.warn('Simple engine readiness check failed:', error)
         }
 
-        // Set up event forwarding to renderer process
+        // Set up basic event forwarding to renderer process
+        // TODO: Update event forwarding for simple engine
         this.setupEventForwarding()
 
         this.engineInitialized = true
@@ -110,39 +83,16 @@ class CleanCueApp {
   private setupEventForwarding() {
     if (!this.engine) return;
 
-    // Set up console logging forwarding to renderer for better debugging
-    const originalConsoleLog = console.log;
-    const originalConsoleError = console.error;
-    const originalConsoleWarn = console.warn;
-
-    console.log = (...args: any[]) => {
-      originalConsoleLog(...args);
-      this.sendLogToRenderer('info', args.join(' '));
-    };
-
-    console.error = (...args: any[]) => {
-      originalConsoleError(...args);
-      this.sendLogToRenderer('error', args.join(' '));
-    };
-
-    console.warn = (...args: any[]) => {
-      originalConsoleWarn(...args);
-      this.sendLogToRenderer('warn', args.join(' '));
-    };
-
     // Forward scan events to renderer
     this.engine.on('scan:started', (data: any) => {
-      console.log('[MAIN] Forwarding scan:started event:', data);
       this.mainWindow?.webContents.send('scan:started', data);
     });
 
     this.engine.on('scan:progress', (data: any) => {
-      console.log('[MAIN] Forwarding scan:progress event:', data);
       this.mainWindow?.webContents.send('scan:progress', data);
     });
 
     this.engine.on('scan:completed', (data: any) => {
-      console.log('[MAIN] Forwarding scan:completed event:', data);
       this.mainWindow?.webContents.send('scan:completed', data);
     });
 
@@ -161,42 +111,34 @@ class CleanCueApp {
 
     // Forward job management events
     this.engine.on('job:started', (data: any) => {
-      console.log('[MAIN] Forwarding job:started event:', data);
       this.mainWindow?.webContents.send('job:started', data);
     });
 
     this.engine.on('job:progress', (data: any) => {
-      console.log('[MAIN] Forwarding job:progress event:', data);
       this.mainWindow?.webContents.send('job:progress', data);
     });
 
     this.engine.on('job:completed', (data: any) => {
-      console.log('[MAIN] Forwarding job:completed event:', data);
       this.mainWindow?.webContents.send('job:completed', data);
     });
 
     this.engine.on('job:failed', (data: any) => {
-      console.log('[MAIN] Forwarding job:failed event:', data);
       this.mainWindow?.webContents.send('job:failed', data);
     });
 
     this.engine.on('job:cancelled', (data: any) => {
-      console.log('[MAIN] Forwarding job:cancelled event:', data);
       this.mainWindow?.webContents.send('job:cancelled', data);
     });
 
     this.engine.on('job:timeout', (data: any) => {
-      console.log('[MAIN] Forwarding job:timeout event:', data);
       this.mainWindow?.webContents.send('job:timeout', data);
     });
 
     this.engine.on('job:queued', (data: any) => {
-      console.log('[MAIN] Forwarding job:queued event:', data);
       this.mainWindow?.webContents.send('job:queued', data);
     });
 
     this.engine.on('job:retried', (data: any) => {
-      console.log('[MAIN] Forwarding job:retried event:', data);
       this.mainWindow?.webContents.send('job:retried', data);
     });
 
@@ -228,6 +170,11 @@ class CleanCueApp {
 
     this.engine.on('stem:separation:cancelled', (data: any) => {
       this.mainWindow?.webContents.send('stem:separation:cancelled', data);
+    });
+
+    // Forward app log events
+    this.engine.on('app:log', (data: any) => {
+      this.mainWindow?.webContents.send('app:log', data);
     });
 
     console.log('[MAIN] Event forwarding setup complete');
@@ -423,7 +370,8 @@ class CleanCueApp {
 
     // Load the app
     if (this.isDev) {
-      this.mainWindow.loadURL('http://localhost:3000')
+      // We know the UI is running on port 3002 from the logs
+      this.mainWindow.loadURL('http://localhost:3001')
       this.mainWindow.webContents.openDevTools()
     } else {
       this.mainWindow.loadFile(path.join(__dirname, 'ui/index.html'))
@@ -731,32 +679,6 @@ class CleanCueApp {
       }
     })
 
-    ipcMain.handle('engine-analyze', async (_, trackIds: string[]) => {
-      console.log(`[MAIN] engine-analyze called with ${trackIds.length} tracks:`, trackIds)
-      this.sendLogToRenderer('info', `🎵 Starting analysis of ${trackIds.length} tracks...`)
-
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          console.error('[MAIN] Engine not initialized for analysis')
-          this.sendLogToRenderer('error', '❌ Engine not initialized for analysis')
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        console.log('[MAIN] Starting analysis for tracks...')
-        this.sendLogToRenderer('info', '🔍 Creating analysis jobs for tracks...')
-
-        // Use the engine's job system for analysis - create proper jobs that show in queue
-        const jobId = await this.engine.createAnalysisJobs(trackIds, ['key', 'bpm', 'energy'], true)
-
-        console.log(`[MAIN] Analysis job created with ID: ${jobId} for ${trackIds.length} tracks`)
-        this.sendLogToRenderer('info', `🎯 Analysis job created for ${trackIds.length} tracks - check Analysis view for progress`)
-        return { success: true, analyzed: trackIds.length }
-      } catch (error) {
-        console.error('Analysis failed:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
 
     ipcMain.handle('engine-export', async (_, options: any) => {
       try {
@@ -978,20 +900,6 @@ class CleanCueApp {
     })
 
     // Additional API handlers for UI components
-    ipcMain.handle('get-analysis-jobs', async () => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const jobs = this.engine.getAllAnalysisJobs()
-        return { success: true, jobs }
-      } catch (error) {
-        console.error('Failed to get analysis jobs:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
 
     // Background Job Management IPC handlers
     ipcMain.handle('get-all-jobs', async () => {
@@ -1000,9 +908,17 @@ class CleanCueApp {
         if (!this.engine) {
           return []
         }
-        return this.engine.getAllJobs()
+
+        const jobs = this.engine.getAllJobs()
+
+        // Handle case where getAllJobs returns undefined
+        if (!jobs || !Array.isArray(jobs)) {
+          return []
+        }
+
+        return jobs
       } catch (error) {
-        console.error('Failed to get all jobs:', error)
+        console.error('Failed to get jobs:', error)
         return []
       }
     })
@@ -1043,6 +959,51 @@ class CleanCueApp {
       } catch (error) {
         console.error('Failed to get job by ID:', error)
         return null
+      }
+    })
+
+    // Create analysis jobs using unified job system
+    ipcMain.handle('createAnalysisJobs', async (_, trackIds: string[]) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        console.log('[MAIN] Creating analysis jobs for tracks:', trackIds)
+        console.log('[MAIN] Engine instance:', !!this.engine)
+
+        // Use the engine's createAnalysisJobs method (which internally calls jobManager)
+        const result = await this.engine.createAnalysisJobs(trackIds)
+
+        console.log('[MAIN] Created analysis jobs:', result)
+
+        // Immediately test retrieval
+        const jobs = this.engine.getAnalysisJobs()
+        console.log('[MAIN] Immediate job retrieval test:', jobs.length, 'jobs found')
+        return result
+      } catch (error) {
+        console.error('[MAIN] Failed to create analysis jobs:', error)
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    })
+
+    ipcMain.handle('getAnalysisJobs', async () => {
+      try {
+        console.log('[MAIN] UI requested analysis jobs')
+        await this.initializeEngine()
+        if (!this.engine) {
+          console.log('[MAIN] No engine available for getAnalysisJobs')
+          return { success: false, jobs: [] }
+        }
+
+        const jobs = this.engine.getAnalysisJobs()
+        console.log('[MAIN] Retrieved analysis jobs:', jobs.length, 'total jobs')
+        console.log('[MAIN] Sample job:', jobs.length > 0 ? jobs[0] : 'No jobs')
+        return { success: true, jobs }
+      } catch (error) {
+        console.error('[MAIN] Failed to get analysis jobs:', error)
+        return { success: false, jobs: [] }
       }
     })
 
@@ -1098,18 +1059,6 @@ class CleanCueApp {
       }
     })
 
-    ipcMain.handle('create-analysis-jobs', async (_, trackIds: string[], analysisTypes?: string[], userInitiated: boolean = true) => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          throw new Error('Engine not initialized')
-        }
-        return this.engine.createAnalysisJobs(trackIds, analysisTypes, userInitiated)
-      } catch (error) {
-        console.error('Failed to create analysis jobs:', error)
-        throw error
-      }
-    })
 
     ipcMain.handle('get-library-health', async () => {
       try {
@@ -1295,6 +1244,35 @@ class CleanCueApp {
         return { success: true }
       } catch (error) {
         console.error('Failed to save app settings:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    // Handle key notation settings
+    ipcMain.handle('set-key-notation', async (_, notation: 'sharp' | 'flat') => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+        this.engine.setKeyNotation(notation)
+        return { success: true }
+      } catch (error) {
+        console.error('Failed to set key notation:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('get-key-notation', async () => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+        const notation = this.engine.getKeyNotation()
+        return { success: true, notation }
+      } catch (error) {
+        console.error('Failed to get key notation:', error)
         return { success: false, error: (error as Error).message }
       }
     })

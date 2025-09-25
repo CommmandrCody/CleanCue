@@ -1,6 +1,6 @@
 {
   "name": "@cleancue/desktop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "CleanCue Desktop Application",
   "homepage": "https://github.com/CommmandrCody/CleanCue",
   "author": "CleanCue Team <team@cleancue.com>",
@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:ui\" \"npm run dev:electron\"",
     "dev:ui": "cd ../../packages/ui && npm run dev",
-    "dev:electron": "npx tsc && npm run rebuild && ./run_electron.sh",
-    "rebuild": "npx electron-rebuild",
-    "build": "npx tsc && npm run rebuild && npm run build:ui && npm run copy:ui && electron-builder",
+    "dev:electron": "npx tsc && ./run_electron.sh",
+    "build": "npx tsc && npm run build:ui && npm run copy:ui && npm run bundle:aubio && electron-builder",
+    "bundle:aubio": "mkdir -p resources/aubio && cp -r /usr/local/opt/aubio/bin/* resources/aubio/ && cp /usr/local/opt/aubio/lib/*.dylib resources/aubio/ 2>/dev/null || true",
     "build:ui": "cd ../../packages/ui && npm run build",
     "copy:ui": "mkdir -p dist/ui && cp -r ../../packages/ui/dist/* dist/ui/",
     "pack": "electron-builder --dir",
@@ -21,7 +21,7 @@
     "dist:all": "electron-builder --mac --win --linux"
   },
   "dependencies": {
-    "@cleancue/engine": "workspace:*",
+    "@cleancue/simple-engine": "workspace:*",
     "@cleancue/shared": "workspace:*",
     "bindings": "^1.5.0",
     "debug": "^4.3.4",
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@electron/get": "^4.0.2",
-    "@electron/rebuild": "^3.6.0",
     "@types/node": "^20.8.0",
     "concurrently": "^8.2.2",
     "electron": "^38.1.2",
@@ -59,9 +58,8 @@
       "**/node_modules/strtok3/**/*",
       "**/node_modules/token-types/**/*",
       "**/node_modules/peek-readable/**/*",
-      "**/node_modules/@cleancue/engine/**/*",
+      "**/node_modules/@cleancue/simple-engine/**/*",
       "**/node_modules/@cleancue/shared/**/*",
-      "**/node_modules/@cleancue/workers/**/*",
       "**/node_modules/sql.js/**/*",
       "**/node_modules/fast-glob/**/*",
       "**/node_modules/uuid/**/*",
@@ -70,8 +68,8 @@
     ],
     "extraResources": [
       {
-        "from": "../../packages/engine",
-        "to": "engine",
+        "from": "../../packages/simple-engine",
+        "to": "simple-engine",
         "filter": [
           "**/*",
           "!node_modules/**",
@@ -90,39 +88,9 @@
         ]
       },
       {
-        "from": "../../packages/workers",
-        "to": "workers",
-        "filter": [
-          "**/*",
-          "!**/*.pyc",
-          "!**/__pycache__",
-          "!venv/lib/python*/site-packages/pip*/**",
-          "!venv/lib/python*/site-packages/setuptools*/**",
-          "!venv/lib/python*/site-packages/wheel*/**",
-          "!venv/lib/python*/site-packages/pytest*/**",
-          "!venv/lib/python*/site-packages/_pytest*/**",
-          "!venv/lib/python*/site-packages/coverage*/**",
-          "!venv/lib/python*/site-packages/distutils*/**",
-          "!venv/lib/python*/site-packages/pkg_resources*/**",
-          "!venv/share/**",
-          "!venv/include/**",
-          "!venv/lib/python*/site-packages/*/tests/**",
-          "!venv/lib/python*/site-packages/*/test/**",
-          "!venv/lib/python*/site-packages/*/__pycache__/**",
-          "!venv/lib/python*/site-packages/*.egg-info/**",
-          "!venv/lib/python*/site-packages/*.dist-info/RECORD",
-          "!venv/lib/python*/site-packages/*.dist-info/INSTALLER",
-          "!venv/lib/python*/site-packages/*.dist-info/direct_url.json",
-          "!venv/lib/python*/site-packages/torch/include/**",
-          "!venv/lib/python*/site-packages/torch/bin/**",
-          "!venv/lib/python*/site-packages/torch/testing/**",
-          "!venv/lib/python*/site-packages/torch/distributed/**",
-          "!venv/lib/python*/site-packages/torch/onnx/**",
-          "!venv/lib/python*/site-packages/sklearn/datasets/**",
-          "!venv/lib/python*/site-packages/numba/tests/**",
-          "!venv/lib/python*/site-packages/scipy/datasets/**",
-          "!venv/lib/python*/site-packages/librosa/example_data/**"
-        ]
+        "from": "resources/aubio",
+        "to": "aubio",
+        "filter": "**/*"
       }
     ],
     "mac": {

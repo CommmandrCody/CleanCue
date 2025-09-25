@@ -1,6 +1,6 @@
 {
   "name": "cleancue",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "DJ Library Manager",
   "author": "CommndrCody",
@@ -46,5 +46,8 @@
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "dependencies": {
+    "essentia.js": "^0.1.3"
   }
 }
