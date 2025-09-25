@@ -67,13 +67,27 @@ CleanCue is a comprehensive DJ library management tool that provides professiona
 ## 🚀 Quick Start
 
 ### Download & Install
-1. **Download**: Get the latest release for your platform:
-   - [Intel Macs](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4.dmg)
-   - [Apple Silicon](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-arm64.dmg)
 
+#### macOS
+1. **Download**:
+   - [Intel Macs](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4.dmg) (120 MB)
+   - [Apple Silicon](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-arm64.dmg) (120 MB)
 2. **Install**: Open the DMG and drag CleanCue to Applications
-
 3. **Launch**: Open CleanCue and add your music folders
+
+#### Windows
+1. **Download**:
+   - [Installer](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-x64.exe) (99 MB)
+   - [Portable](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-x64-Portable.exe) (98 MB)
+2. **Install**: Run installer or extract portable version
+3. **Launch**: Open CleanCue and add your music folders
+
+#### Linux
+1. **Download**:
+   - [AppImage](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.2.4-x86_64.AppImage) (126 MB)
+   - [Debian Package](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.2.4-amd64.deb) (82 MB)
+2. **Install**: Make AppImage executable (`chmod +x`) or install deb package (`sudo dpkg -i`)
+3. **Launch**: Run AppImage or launch from applications menu
 
 ### Professional Analysis (Optional)
 For the most accurate analysis results, install Python dependencies:

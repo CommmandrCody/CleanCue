@@ -111,9 +111,22 @@ Normalized:      -12.6 LUFS, -1.5 dBFS peak (excellent result within DJ standard
 - **Cross-Platform**: Intel and Apple Silicon builds with aubio integration
 
 ### Release Artifacts
-- **CleanCue-0.2.4.dmg**: Intel x64 build
-- **CleanCue-0.2.4-arm64.dmg**: Apple Silicon build
-- **Full Source**: All professional analysis and normalization scripts included
+
+#### macOS
+- **CleanCue-0.2.4.dmg**: Intel x64 build (120 MB)
+- **CleanCue-0.2.4-arm64.dmg**: Apple Silicon build (120 MB)
+
+#### Windows
+- **CleanCue-0.2.4-x64.exe**: NSIS installer for Windows x64 (99 MB)
+- **CleanCue-0.2.4-x64-Portable.exe**: Portable version for Windows x64 (98 MB)
+
+#### Linux
+- **cleancue-0.2.4-x86_64.AppImage**: Universal Linux AppImage (126 MB)
+- **cleancue-0.2.4-amd64.deb**: Debian/Ubuntu package (82 MB)
+
+#### Full Source
+- All professional analysis and normalization scripts included
+- Complete cross-platform build system with electron-builder configuration
 
 ## 🎯 Professional DJ Features
 
