@@ -4,6 +4,7 @@ import clsx from 'clsx'
 
 interface AnalysisJob {
   id: string
+  trackId?: string
   trackTitle: string
   trackArtist: string
   status: 'pending' | 'running' | 'completed' | 'failed'
@@ -18,6 +19,7 @@ interface AnalysisJob {
     errors?: string[]
   }
 }
+
 
 interface ProgressLogEntry {
   id: string
@@ -51,7 +53,7 @@ export function AnalysisProgress() {
   const [showMixSuggestions, setShowMixSuggestions] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  // Calculate stats from actual jobs
+  // Calculate stats from actual jobs - but show track-level thinking
   const stats = {
     total: jobs.length,
     completed: jobs.filter(job => job.status === 'completed').length,
@@ -72,7 +74,7 @@ export function AnalysisProgress() {
       message,
       type
     }
-    setProgressLog(prev => [...prev.slice(-49), entry]) // Keep last 50 entries
+    setProgressLog(prev => [...prev.slice(-19), entry]) // Keep last 20 entries
 
     // Auto-scroll to bottom
     setTimeout(() => {
@@ -151,21 +153,31 @@ export function AnalysisProgress() {
   // Load real analysis jobs from backend
   const loadJobs = async () => {
     try {
+      console.log('[UI] AnalysisProgress: loadJobs() called')
       if (window.electronAPI) {
+        console.log('[UI] AnalysisProgress: electronAPI available, calling getAnalysisJobs()')
         const response = await window.electronAPI.getAnalysisJobs()
+        console.log('[UI] AnalysisProgress: getAnalysisJobs response:', response)
         if (response.success) {
+          console.log('[UI] AnalysisProgress: Setting jobs:', response.jobs?.length || 0)
           setJobs(response.jobs || [])
+          addProgressLogEntry('System', `Loaded ${response.jobs?.length || 0} analysis jobs`, 'success')
+        } else {
+          console.log('[UI] AnalysisProgress: getAnalysisJobs failed:', response)
+          addProgressLogEntry('System', `Failed to load jobs: ${response}`, 'error')
         }
+      } else {
+        console.log('[UI] AnalysisProgress: electronAPI not available')
       }
     } catch (error) {
-      console.error('Failed to load analysis jobs:', error)
+      console.error('[UI] AnalysisProgress: Failed to load analysis jobs:', error)
       addProgressLogEntry('System', `Failed to load jobs: ${error}`, 'error')
     }
   }
 
   // Load real analysis jobs from backend
   useEffect(() => {
-
+    console.log('[UI] AnalysisProgress: useEffect triggered, component mounted')
     loadJobs()
 
     // Set up real-time event listeners
@@ -174,16 +186,39 @@ export function AnalysisProgress() {
         const data = args.length > 1 ? args[1] : args[0]
         console.log('[UI] Analysis started event received:', data)
         addProgressLogEntry(data.trackTitle || 'Track', `Started analysis: ${data.currentTask || 'BPM/Key detection'}`, 'info')
-        loadJobs() // Refresh jobs when analysis starts
+        // Add or update job state directly instead of reloading all jobs
+        setJobs(prevJobs => {
+          const existingJobIndex = prevJobs.findIndex(job => job.id === data.id)
+          if (existingJobIndex >= 0) {
+            // Update existing job
+            return prevJobs.map(job =>
+              job.id === data.id ? { ...job, status: 'running' as const, currentTask: data.currentTask } : job
+            )
+          } else {
+            // Add new job if not found
+            return [...prevJobs, {
+              id: data.id,
+              trackTitle: data.trackTitle || 'Unknown Track',
+              trackArtist: data.trackArtist || 'Unknown Artist',
+              status: 'running' as const,
+              progress: 0,
+              currentTask: data.currentTask || 'Starting analysis...'
+            }]
+          }
+        })
       }
 
       const handleAnalysisProgress = (...args: any[]) => {
         const data = args.length > 1 ? args[1] : args[0]
         console.log('[UI] Analysis progress event received:', data)
-        if (data.trackTitle && data.progress) {
-          addProgressLogEntry(data.trackTitle, `Progress: ${Math.round(data.progress)}% - ${data.currentTask || 'Processing'}`, 'info')
+        // Only log progress at major milestones (0%, 33%, 66%, 100%) to reduce spam
+        if (data.trackTitle && data.progress && [0, 33, 66, 100].includes(Math.round(data.progress))) {
+          addProgressLogEntry(data.trackTitle, `${Math.round(data.progress)}% - ${data.currentTask || 'Processing'}`, 'info')
         }
-        loadJobs() // Refresh jobs on progress
+        // Update job progress directly instead of reloading all jobs
+        setJobs(prevJobs => prevJobs.map(job =>
+          job.id === data.id ? { ...job, progress: data.progress, currentTask: data.currentTask } : job
+        ))
       }
 
       const handleAnalysisCompleted = (...args: any[]) => {
@@ -196,7 +231,16 @@ export function AnalysisProgress() {
           const key = data.results.key ? ` Key: ${data.results.key} (${convertToCamelot(data.results.key)})` : ''
           addProgressLogEntry(data.trackTitle || 'Track', `Analysis complete!${bpm}${key}`, 'success')
         }
-        loadJobs() // Refresh jobs when analysis completes
+        // Update job to completed status directly instead of reloading all jobs
+        setJobs(prevJobs => prevJobs.map(job =>
+          job.id === data.id ? {
+            ...job,
+            status: data.error ? 'failed' as const : 'completed' as const,
+            progress: 100,
+            results: data.results,
+            currentTask: data.error ? 'Analysis failed' : 'Complete'
+          } : job
+        ))
 
         // Auto-generate mix suggestions if enabled
         if (showMixSuggestions) {
@@ -218,16 +262,7 @@ export function AnalysisProgress() {
         }
       }
     }
-
-    // Poll for updates every 5 seconds as backup if jobs are running
-    const interval = setInterval(() => {
-      if (jobs.some(job => job.status === 'running')) {
-        loadJobs()
-      }
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [jobs, isRunning])
+  }, [])
 
   const handleToggleAnalysis = () => {
     setIsRunning(!isRunning)
@@ -346,12 +381,13 @@ export function AnalysisProgress() {
         </div>
 
         <div className="divide-y divide-gray-700">
+          {/* Show active jobs first (running/pending) */}
           {jobs.filter(job => job.status === 'running' || job.status === 'pending').map((job) => (
             <div key={job.id} className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-3">
                   <div className={clsx(
-                    'w-2 h-2 rounded-full',
+                    'w-3 h-3 rounded-full',
                     job.status === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-gray-500'
                   )} />
                   <div>
@@ -359,33 +395,159 @@ export function AnalysisProgress() {
                     <div className="text-xs text-gray-400">{job.trackArtist}</div>
                   </div>
                 </div>
-                {job.status === 'running' && (
-                  <div className="text-xs text-gray-400">
-                    {Math.round(job.progress)}%
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Show completed/failed results in a simplified way */}
-        {jobs.some(job => job.status === 'completed' && job.results) && (
-          <div className="p-4 border-t border-gray-600">
-            <div className="text-sm text-gray-400 mb-2">Recently Analyzed</div>
-            <div className="grid gap-2">
-              {jobs.filter(job => job.status === 'completed' && job.results).slice(0, 3).map((job) => (
-                <div key={job.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300 truncate">{job.trackTitle}</span>
-                  <div className="flex space-x-3 text-xs">
-                    {job.results?.bpm && <span className="text-blue-400">{job.results.bpm} BPM</span>}
-                    {job.results?.key && <span className="text-purple-400">{job.results.key}</span>}
+                <div className="text-right">
+                  {job.status === 'running' && (
+                    <div className="text-sm font-medium text-blue-400">
+                      {Math.round(job.progress || 0)}%
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    {job.status === 'running' ? (job.currentTask || 'Processing...') : 'Queued'}
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Progress Bar */}
+              {job.status === 'running' && (
+                <div className="space-y-2">
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${job.progress || 0}%` }}
+                    />
+                  </div>
+
+                  {/* Results Preview */}
+                  {job.results && (
+                    <div className="flex space-x-4 text-xs text-gray-400">
+                      {job.results.bpm && (
+                        <span className="text-blue-400">BPM: {job.results.bpm}</span>
+                      )}
+                      {job.results.key && (
+                        <span className="text-purple-400">Key: {job.results.key}</span>
+                      )}
+                      {job.results.energy && (
+                        <span className="text-green-400">Energy: {Math.round(job.results.energy * 100)}%</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          ))}
+
+          {/* Show completed and failed jobs (one per track) */}
+          {(() => {
+            const completedAndFailedJobs = jobs.filter(job => job.status === 'completed' || job.status === 'failed');
+
+            // Group by trackId first, then by track title as fallback
+            const groupedByTrack = completedAndFailedJobs.reduce((acc: { [key: string]: AnalysisJob[] }, job) => {
+              // Use trackId if available, otherwise use title+artist combination
+              const key = job.trackId || `${job.trackTitle || 'Unknown'}-${job.trackArtist || 'Unknown'}`;
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(job);
+              return acc;
+            }, {});
+
+            // Only show tracks with valid titles (filter out empty entries)
+            return Object.entries(groupedByTrack)
+              .filter(([_, trackJobs]) => {
+                const job = trackJobs[0];
+                return job.trackTitle && job.trackTitle.trim() !== '' && job.trackTitle !== 'Unknown Track';
+              })
+              // Show all entries - no performance issues with static job displays
+              .map(([trackKey, trackJobs]) => {
+                const representativeJob = trackJobs[0];
+                const completedJobs = trackJobs.filter(job => job.status === 'completed');
+                const failedJobs = trackJobs.filter(job => job.status === 'failed');
+
+                // Determine overall status
+                let overallStatus: 'completed' | 'partial' | 'failed';
+                if (completedJobs.length > 0 && failedJobs.length === 0) {
+                  overallStatus = 'completed';
+                } else if (completedJobs.length > 0 && failedJobs.length > 0) {
+                  overallStatus = 'partial';
+                } else {
+                  overallStatus = 'failed';
+                }
+
+                return (
+                  <div key={`track-${trackKey}`} className="p-4 bg-gray-900">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className={clsx(
+                          'w-3 h-3 rounded-full',
+                          overallStatus === 'completed' ? 'bg-green-500' :
+                          overallStatus === 'partial' ? 'bg-yellow-500' : 'bg-red-500'
+                        )} />
+                        <div>
+                          <div className="font-medium">{representativeJob.trackTitle}</div>
+                          <div className="text-xs text-gray-400">{representativeJob.trackArtist}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={clsx(
+                          'text-sm font-medium',
+                          overallStatus === 'completed' ? 'text-green-400' :
+                          overallStatus === 'partial' ? 'text-yellow-400' : 'text-red-400'
+                        )}>
+                          {overallStatus === 'completed' ? 'Complete' :
+                           overallStatus === 'partial' ? 'Partial' : 'Failed'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {completedJobs.length > 0 && failedJobs.length > 0
+                            ? `${completedJobs.length} ok, ${failedJobs.length} failed`
+                            : trackJobs.length === 1 ? 'Single analysis' : `${trackJobs.length} analysis jobs`
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Results Preview for completed jobs */}
+                    {(() => {
+                      const completedJob = completedJobs.find(job => job.results);
+                      return completedJob?.results && (
+                        <div className="flex space-x-4 text-xs text-gray-400 mt-2">
+                          {completedJob.results.bpm && (
+                            <span className="text-blue-400">BPM: {completedJob.results.bpm}</span>
+                          )}
+                          {completedJob.results.key && (
+                            <span className="text-purple-400">Key: {completedJob.results.key}</span>
+                          )}
+                          {completedJob.results.energy && (
+                            <span className="text-green-400">Energy: {Math.round(completedJob.results.energy * 100)}%</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              });
+          })()}
+        </div>
+
+        {/* Show total count */}
+        {(() => {
+          const completedAndFailedJobs = jobs.filter(job => job.status === 'completed' || job.status === 'failed');
+          const groupedByTrack = completedAndFailedJobs.reduce((acc: { [key: string]: AnalysisJob[] }, job) => {
+            const key = job.trackId || `${job.trackTitle || 'Unknown'}-${job.trackArtist || 'Unknown'}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(job);
+            return acc;
+          }, {});
+
+          const validTracks = Object.entries(groupedByTrack).filter(([_, trackJobs]) => {
+            const job = trackJobs[0];
+            return job.trackTitle && job.trackTitle.trim() !== '' && job.trackTitle !== 'Unknown Track';
+          });
+          const uniqueTracks = validTracks.length;
+
+          return uniqueTracks > 0 && (
+            <div className="p-4 border-t border-gray-600 text-center text-sm text-gray-400">
+              {uniqueTracks} analyzed tracks ({jobs.length} total jobs)
+            </div>
+          );
+        })()}
 
         {jobs.length === 0 && (
           <div className="text-center py-12 text-gray-400">
@@ -405,7 +567,7 @@ export function AnalysisProgress() {
           </h3>
           <div
             ref={logRef}
-            className="bg-gray-900 rounded-md p-3 h-64 overflow-y-auto font-mono text-xs space-y-1"
+            className="bg-gray-900 rounded-md p-3 h-32 overflow-y-auto font-mono text-xs space-y-1"
           >
             {progressLog.map(entry => (
               <div key={entry.id} className="flex items-start space-x-2">

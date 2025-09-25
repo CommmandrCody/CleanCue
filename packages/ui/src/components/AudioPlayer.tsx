@@ -49,6 +49,10 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
     audio.src = `file://${currentTrack.path}`
     audio.load()
 
+    // Reset playing state when loading new track
+    setIsPlaying(false)
+    setCurrentTime(0)
+
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
@@ -155,9 +159,9 @@ export function AudioPlayer({ tracks, currentTrackIndex, onTrackChange, onClose 
 
               <button
                 onClick={togglePlayPause}
-                className="p-4 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white transition-colors"
               >
-                {isPlaying ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
+                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
               </button>
 
               <button

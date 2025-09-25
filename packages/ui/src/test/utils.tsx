@@ -1,8 +1,14 @@
 import { render, RenderOptions } from '@testing-library/react'
 import { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { YouTubeDownloadProvider } from '../contexts/YouTubeDownloadContext'
+import { StemSeparationProvider } from '../contexts/StemSeparationContext'
+import { setupElectronAPIMock } from './mocks/electronAPI'
 
-// Create a test wrapper with providers
+// Setup electron API mock globally
+setupElectronAPIMock()
+
+// Create a test wrapper with all required providers
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -14,7 +20,11 @@ const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <YouTubeDownloadProvider>
+        <StemSeparationProvider>
+          {children}
+        </StemSeparationProvider>
+      </YouTubeDownloadProvider>
     </QueryClientProvider>
   )
 }

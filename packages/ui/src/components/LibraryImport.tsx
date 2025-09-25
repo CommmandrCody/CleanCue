@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FolderOpen, Copy, Link, Settings, AlertTriangle, CheckCircle, X, Plus, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -42,6 +42,15 @@ export function LibraryImport({ isOpen, onClose, onImportComplete }: LibraryImpo
   const folderInputRef = useRef<HTMLInputElement>(null)
   const scanInProgressRef = useRef(false)
 
+  // Clear sources when dialog is closed to prevent importing old sources
+  useEffect(() => {
+    if (!isOpen) {
+      setSources([])
+      setIsImporting(false)
+      scanInProgressRef.current = false
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
   const addSourceFolder = async () => {
@@ -82,7 +91,7 @@ export function LibraryImport({ isOpen, onClose, onImportComplete }: LibraryImpo
             errors: scanResult.errors
           })
 
-          if (scanResult.success) {
+          if (scanResult.success && scanResult.tracksFound > 0) {
             console.log(`[LibraryImport] ✅ [${callId}] Setting estimatedTracks to: ${scanResult.tracksFound}`)
             setSources(prev => prev.map(source =>
               source.id === newSource.id
@@ -90,10 +99,11 @@ export function LibraryImport({ isOpen, onClose, onImportComplete }: LibraryImpo
                 : source
             ))
           } else {
-            console.log(`[LibraryImport] ❌ [${callId}] Scan failed, setting error status`)
+            const errorMsg = scanResult.error || (scanResult.errors && scanResult.errors.length > 0 ? scanResult.errors[0] : 'No tracks found in folder');
+            console.log(`[LibraryImport] ❌ [${callId}] Scan failed: ${errorMsg}`)
             setSources(prev => prev.map(source =>
               source.id === newSource.id
-                ? { ...source, status: 'error', error: 'Failed to scan folder' }
+                ? { ...source, status: 'error', error: errorMsg }
                 : source
             ))
           }

@@ -64,16 +64,19 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
         console.log(`🔍 UI DEBUG - Received ${dbTracks.length} tracks from database`)
 
         // Log first track for debugging
-        if (dbTracks.length > 0) {
-          console.log(`🔍 UI DEBUG - First track from DB:`, {
-            id: dbTracks[0].id,
-            title: dbTracks[0].title,
-            artist: dbTracks[0].artist,
-            bpm: dbTracks[0].bpm,
-            key: dbTracks[0].key,
-            energy: dbTracks[0].energy,
-            path: dbTracks[0].path
-          })
+        if (dbTracks && dbTracks.length > 0) {
+          const firstTrack = dbTracks[0]
+          if (firstTrack) {
+            console.log(`🔍 UI DEBUG - First track from DB:`, {
+              id: firstTrack.id,
+              title: firstTrack.title,
+              artist: firstTrack.artist,
+              bpm: firstTrack.bpm,
+              key: firstTrack.key,
+              energy: firstTrack.energy,
+              path: firstTrack.path
+            })
+          }
         }
 
         const convertedTracks = dbTracks.map((dbTrack: any) => {
@@ -341,21 +344,29 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   const handleAnalyzeClick = async () => {
     if (selectedTracks.length === 0) return
 
-    console.log('Starting analysis for tracks:', selectedTracks)
+    console.log('Creating analysis jobs for tracks:', selectedTracks)
 
     try {
       if (window.electronAPI) {
-        console.log('Calling engineAnalyze...')
-        const result = await window.electronAPI.engineAnalyze(selectedTracks)
-        console.log('Analysis result:', result)
-        // Reload tracks to show updated analysis data
-        await loadTracks()
-        console.log('Tracks reloaded after analysis')
+        console.log('Calling createAnalysisJobs...')
+        const result = await window.electronAPI.createAnalysisJobs(selectedTracks)
+        console.log('Analysis jobs created:', result)
+
+        // Log the exact response structure for debugging
+        console.log('[LibraryView] createAnalysisJobs response:', JSON.stringify(result))
+
+        if (typeof result === 'object' && result && 'success' in result && (result as any).success) {
+          const jobsCreated = (result as any).jobsCreated || selectedTracks.length
+          console.log(`✅ Successfully submitted ${selectedTracks.length} tracks to analysis queue (${jobsCreated} jobs created)`)
+          // Jobs will be processed in background, UI will update via job system
+        } else {
+          console.error('❌ Failed to create analysis jobs:', typeof result === 'object' && result && 'error' in result ? (result as any).error : result)
+        }
       } else {
         console.error('electronAPI not available')
       }
     } catch (error) {
-      console.error('Failed to analyze tracks:', error)
+      console.error('Failed to create analysis jobs:', error)
     }
   }
 
@@ -603,15 +614,15 @@ ${sortedTracks.map((track, i) =>
         /* Compact List View */
         <div className="bg-gray-800 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300 min-w-[800px]">
-            <div className="col-span-1">✓</div>
-            <div className="col-span-1">▶</div>
-            <div className="col-span-1"></div>
-            <div className="col-span-4">Track</div>
-            <div className="col-span-2">Artist</div>
-            <div className="col-span-1">BPM</div>
-            <div className="col-span-1">Key</div>
-            <div className="col-span-1">⚡</div>
+            <div className="grid grid-cols-[auto_40px_auto_1fr_200px_80px_80px_60px] gap-3 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300 min-w-[800px]">
+            <div>✓</div>
+            <div>▶</div>
+            <div></div>
+            <div>Track</div>
+            <div>Artist</div>
+            <div>BPM</div>
+            <div>Key</div>
+            <div>⚡</div>
           </div>
 
             <div className="divide-y divide-gray-700">
@@ -625,11 +636,11 @@ ${sortedTracks.map((track, i) =>
                 {/* Main Track Row */}
                 <div
                   className={clsx(
-                    'grid grid-cols-12 gap-4 px-4 py-2 hover:bg-gray-700 transition-colors text-sm min-w-[800px]',
+                    'grid grid-cols-[auto_40px_auto_1fr_200px_80px_80px_60px] gap-3 px-4 py-2 hover:bg-gray-700 transition-colors text-sm min-w-[800px]',
                     selectedTracks.includes(track.id) && 'bg-primary-900/20'
                   )}
                 >
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     <input
                       type="checkbox"
                       checked={selectedTracks.includes(track.id)}
@@ -638,17 +649,17 @@ ${sortedTracks.map((track, i) =>
                     />
                   </div>
 
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center justify-center">
                     <button
                       onClick={() => handlePlayTrack(track)}
                       className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
                       title="Play track"
                     >
-                      <Play className="h-3 w-3" />
+                      <Play className="h-4 w-4" />
                     </button>
                   </div>
 
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 ? (
                       <button
                         onClick={() => toggleTrackExpansion(track.id)}
@@ -674,7 +685,7 @@ ${sortedTracks.map((track, i) =>
                     )}
                   </div>
 
-                  <div className="col-span-4 flex items-center min-w-0">
+                  <div className="flex items-center min-w-0">
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate text-sm flex items-center">
                         {track.title}
@@ -734,15 +745,15 @@ ${sortedTracks.map((track, i) =>
                     </div>
                   </div>
 
-                  <div className="col-span-2 flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
+                  <div className="flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
 
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     {track.bpm && (
                       <div className="flex items-center space-x-1">
                         <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
                         {/* BPM Compatibility Indicator */}
-                        {selectedTracks.length === 1 && selectedTracks[0] !== track.id && (() => {
-                          const selectedTrack = tracks.find(t => t.id === selectedTracks[0])
+                        {selectedTracks?.length === 1 && selectedTracks?.[0] !== track.id && (() => {
+                          const selectedTrack = tracks.find(t => t.id === selectedTracks?.[0])
                           if (selectedTrack?.bpm && track.bpm) {
                             const compatibility = getBpmCompatibility(selectedTrack.bpm, track.bpm)
                             const compatColors = {
@@ -766,15 +777,15 @@ ${sortedTracks.map((track, i) =>
                     )}
                   </div>
 
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     {(keyDisplayMode === 'camelot' ? track.camelotKey : track.key) && (
                       <div className="flex items-center space-x-1">
                         <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
                           {keyDisplayMode === 'camelot' ? track.camelotKey : track.key}
                         </span>
                         {/* Harmonic Mixing Indicator - shows if compatible with previously selected track */}
-                        {selectedTracks.length === 1 && selectedTracks[0] !== track.id && (() => {
-                          const selectedTrack = tracks.find(t => t.id === selectedTracks[0])
+                        {selectedTracks?.length === 1 && selectedTracks?.[0] !== track.id && (() => {
+                          const selectedTrack = tracks.find(t => t.id === selectedTracks?.[0])
                           if (selectedTrack?.key && track.key) {
                             const compatibility = getHarmonicCompatibility(selectedTrack.key, track.key)
                             const compatColors = {
@@ -798,10 +809,10 @@ ${sortedTracks.map((track, i) =>
                     )}
                   </div>
 
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     {track.energy ? (
                       <div className="flex items-center space-x-1" title={`Energy Level: ${track.energy}/100`}>
-                        <div className="w-8 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="w-6 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                           <div
                             className={clsx('h-full rounded-full transition-all',
                               track.energy >= 80 ? 'bg-red-400' :

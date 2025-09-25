@@ -33,6 +33,10 @@ export interface ElectronAPI {
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>
   fixHealthIssue: (issueId: string) => Promise<{ success: boolean; message: string }>
 
+  // Key notation settings
+  setKeyNotation: (notation: 'sharp' | 'flat') => Promise<{ success: boolean; error?: string }>
+  getKeyNotation: () => Promise<{ success: boolean; notation?: 'sharp' | 'flat'; error?: string }>
+
   // Library Import operations
   importLibrarySource: (options: {
     sourcePath: string

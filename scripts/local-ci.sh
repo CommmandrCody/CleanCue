@@ -57,19 +57,7 @@ stage "Installing Dependencies"
 echo "Installing Node.js dependencies..."
 pnpm install || error "Failed to install dependencies"
 
-echo "Setting up Python environment..."
-if [ ! -d "packages/workers/venv" ]; then
-    cd packages/workers
-    python -m venv venv || python3 -m venv venv
-    cd ../..
-fi
-
-if [ -f "packages/workers/venv/bin/activate" ]; then
-    source packages/workers/venv/bin/activate
-    pip install numpy scipy librosa
-else
-    warning "Python virtual environment not found"
-fi
+echo "Python environment setup skipped (using simplified architecture)"
 
 success "Dependencies installed"
 
@@ -111,11 +99,11 @@ echo
 echo -e "${GREEN}🎉 Local CI Pipeline Completed Successfully!${NC}"
 echo
 echo "Available artifacts:"
-if [ -f "apps/desktop/release/CleanCue-0.2.0.dmg" ]; then
-    echo "- macOS x64 DMG: apps/desktop/release/CleanCue-0.2.0.dmg"
+if [ -f "apps/desktop/release/CleanCue-0.2.4.dmg" ]; then
+    echo "- macOS x64 DMG: apps/desktop/release/CleanCue-0.2.4.dmg"
 fi
-if [ -f "apps/desktop/release/CleanCue-0.2.0-arm64.dmg" ]; then
-    echo "- macOS ARM64 DMG: apps/desktop/release/CleanCue-0.2.0-arm64.dmg"
+if [ -f "apps/desktop/release/CleanCue-0.2.4-arm64.dmg" ]; then
+    echo "- macOS ARM64 DMG: apps/desktop/release/CleanCue-0.2.4-arm64.dmg"
 fi
 if [ -d "apps/desktop/release/mac/CleanCue.app" ]; then
     echo "- macOS App: apps/desktop/release/mac/CleanCue.app"

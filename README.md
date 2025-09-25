@@ -21,7 +21,7 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 - **Rekordbox**: Pioneer XML with tempo and key data
 - **Traktor Pro**: NML format with full metadata support
 
-### 💾 **USB Export (NEW in v0.2.0)**
+### 💾 **USB Export**
 - **Custom Filename Templates**: Use metadata in filenames like `{artist} - {title} [{bpm}] ({key})`
 - **Character Normalization**: Remove accents, special characters, and ensure filesystem compatibility
 - **Export Profiles**: Pre-configured templates for different DJ setups (Standard, Serato, Rekordbox, etc.)
@@ -30,14 +30,14 @@ CleanCue helps DJs organize, analyze, and export their music collections across 
 - **Backup Protection**: Optional backup of original files before processing
 - **Conflict Resolution**: Intelligent handling of duplicate filenames
 
-### 🎤 **STEM Separation (NEW)**
+### 🎤 **STEM Separation**
 - **AI-Powered Audio Separation**: Extract vocals, drums, bass, and other instruments
 - **Multiple Models**: Support for different separation algorithms and quality levels
 - **Batch Processing**: Queue multiple tracks for separation
 - **Real-time Progress**: Monitor separation progress with live updates
 - **DJ-Ready Output**: Separated stems ready for mixing and remixing
 
-### 📺 **YouTube Audio Downloader (NEW)**
+### 📺 **YouTube Audio Downloader**
 - **High-Quality Audio**: Download audio from YouTube videos in multiple formats
 - **Batch Downloads**: Queue multiple videos for download
 - **Smart Metadata**: Automatic title, artist, and metadata extraction
@@ -86,16 +86,11 @@ cd cleancue
 # Install dependencies
 pnpm install
 
-# Set up Python environment for audio analysis
-cd packages/workers
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\\Scripts\\activate
-pip install -r requirements.txt
+# Build everything
+pnpm run build
 
-# Start development servers
-cd ../../
-pnpm dev:ui          # Start web UI (http://localhost:3000)
-pnpm dev:desktop     # Start desktop app with hot reload
+# Start development
+pnpm run dev         # Start desktop app with hot reload
 ```
 
 ## 📋 System Requirements
