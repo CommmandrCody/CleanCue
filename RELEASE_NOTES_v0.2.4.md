@@ -4,7 +4,7 @@
 
 ### Professional Audio Analysis System
 - **Multi-Engine Analysis**: Librosa, KeyFinder, and Essentia.js engines for accurate track analysis
-- **Fixes Inaccurate Results**: No more "C# major" with identical 0.4 energy values - now provides diverse, accurate results matching Mixed In Key quality
+- **Dramatically Improved Accuracy**: Professional analysis algorithms provide diverse, accurate results matching Mixed In Key quality
 - **Camelot Wheel Mapping**: Professional DJ notation (8A, 9A, 4A, etc.) alongside traditional keys
 - **Engine Preference System**: User-selectable analysis engine with automatic fallback
 - **Scientific Algorithms**: Krumhansl-Schmuckler key profiles, onset-based BPM detection, spectral energy analysis
@@ -39,8 +39,8 @@
 ### Before vs After
 | Aspect | Before | After |
 |--------|---------|-------|
-| Key Detection | All tracks "C# major" | Diverse, accurate keys (F# minor 11A, C# major 3B, etc.) |
-| Energy Values | Identical 0.4-0.5 range | Professional 3.0-7.0 range matching DJ standards |
+| Key Detection | Limited accuracy with repetitive results | Diverse, accurate keys (F# minor 11A, C# major 3B, etc.) |
+| Energy Values | Narrow 0.4-0.5 range | Professional 3.0-7.0 range matching DJ standards |
 | BPM Accuracy | Basic estimation | Scientific onset-based detection |
 | Engine Transparency | Hidden algorithms | User-visible engine selection (Librosa/KeyFinder/Essentia) |
 

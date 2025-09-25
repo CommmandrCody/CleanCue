@@ -10,7 +10,7 @@ CleanCue is a comprehensive DJ library management tool that provides professiona
 
 ### 🎵 **Professional Audio Analysis**
 - **Multi-Engine Analysis System**: Choose from Librosa (scientific), KeyFinder (DJ-focused), or Essentia.js (research-grade)
-- **Accurate Results**: Eliminates the "all tracks are C# major" problem with diverse, professional-quality analysis
+- **Dramatically Improved Accuracy**: Professional analysis algorithms provide diverse, accurate results
 - **Camelot Wheel Integration**: Professional DJ notation (8A, 9A, 4A) alongside traditional keys
 - **Scientific BPM Detection**: Onset-based tempo analysis using professional algorithms
 - **Energy Analysis**: Spectral feature extraction for accurate energy ratings (3.0-7.0 range)
@@ -58,7 +58,7 @@ CleanCue is a comprehensive DJ library management tool that provides professiona
 
 | Aspect | Before v0.2.4 | After v0.2.4 |
 |--------|---------------|--------------|
-| Key Detection | All tracks "C# major" | Diverse keys (F# minor 11A, C# major 3B, etc.) |
+| Key Detection | Limited accuracy with repetitive results | Diverse keys (F# minor 11A, C# major 3B, etc.) |
 | Energy Values | Identical 0.4-0.5 range | Professional 3.0-7.0 range |
 | BPM Accuracy | Basic estimation | Scientific onset detection |
 | Engine Choice | Hidden algorithms | User-selectable (Librosa/KeyFinder/Essentia) |
