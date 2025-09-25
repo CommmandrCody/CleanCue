@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Database, Music, Folder, X, Save, RotateCcw, Workflow, Volume2, FileText, Layers } from 'lucide-react'
+import { Settings as SettingsIcon, Music, Folder, X, Save, RotateCcw, Workflow, Volume2, FileText, Layers } from 'lucide-react'
 import { LogViewer } from './LogViewer'
 
 interface SettingsProps {
@@ -8,11 +8,6 @@ interface SettingsProps {
 }
 
 interface AppSettings {
-  database: {
-    path: string
-    autoBackup: boolean
-    backupFrequency: 'daily' | 'weekly' | 'monthly'
-  }
   library: {
     autoScan: boolean
     scanOnStartup: boolean
@@ -21,11 +16,13 @@ interface AppSettings {
   }
   workflow: {
     enableNormalization: boolean
+    normalizationMode: 'metadata' | 'export' | 'both'
     normalizationPreset: 'dj' | 'broadcast' | 'streaming' | 'custom'
     customTargetLufs: number
     customTargetPeak: number
-    autoNormalizeOnImport: boolean
-    createBackups: boolean
+    customLra: number
+    useLimiter: boolean
+    exportDirectory: string
     normalizedSuffix: string
     outputFormat: 'wav' | 'flac' | 'aiff'
   }
@@ -34,6 +31,10 @@ interface AppSettings {
     analyzeOnImport: boolean
     writeTagsToFiles: boolean
     bpmRange: { min: number; max: number }
+    keyNotation: 'sharp' | 'flat'
+    engine: 'auto' | 'librosa' | 'keyfinder' | 'essentia'
+    engineFallback: boolean
+    showEngineInfo: boolean
   }
   stems: {
     enabled: boolean
@@ -63,11 +64,6 @@ interface AppSettings {
 }
 
 const defaultSettings: AppSettings = {
-  database: {
-    path: '~/Library/Application Support/CleanCue/library.db',
-    autoBackup: true,
-    backupFrequency: 'weekly'
-  },
   library: {
     autoScan: false,
     scanOnStartup: false,
@@ -76,19 +72,25 @@ const defaultSettings: AppSettings = {
   },
   workflow: {
     enableNormalization: true,
+    normalizationMode: 'metadata',
     normalizationPreset: 'dj',
-    customTargetLufs: -12,
-    customTargetPeak: -1,
-    autoNormalizeOnImport: false,
-    createBackups: true,
-    normalizedSuffix: '_normalized',
-    outputFormat: 'wav'
+    customTargetLufs: -14,
+    customTargetPeak: -1.5,
+    customLra: 11,
+    useLimiter: false,
+    exportDirectory: '/Users/wagner/Music/CleanCue Normalized',
+    normalizedSuffix: ' (Norm)',
+    outputFormat: 'flac'
   },
   analysis: {
     autoAnalyze: false,
     analyzeOnImport: false,
     writeTagsToFiles: true,
-    bpmRange: { min: 60, max: 200 }
+    bpmRange: { min: 60, max: 200 },
+    keyNotation: 'sharp' as 'sharp' | 'flat',
+    engine: 'auto' as 'auto' | 'librosa' | 'keyfinder' | 'essentia',
+    engineFallback: true,
+    showEngineInfo: true
   },
   stems: {
     enabled: true,
@@ -119,7 +121,7 @@ const defaultSettings: AppSettings = {
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings)
-  const [activeTab, setActiveTab] = useState<'database' | 'library' | 'workflow' | 'analysis' | 'stems' | 'ui' | 'logs'>('workflow')
+  const [activeTab, setActiveTab] = useState<'library' | 'workflow' | 'analysis' | 'stems' | 'ui' | 'logs'>('workflow')
 
   if (!isOpen) return null
 
@@ -129,6 +131,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
         const result = await window.electronAPI.saveSettings(settings)
         if (result.success) {
           console.log('Settings saved successfully')
+
+          // Update key notation in the engine
+          await window.electronAPI.setKeyNotation(settings.analysis.keyNotation)
+
           onClose()
         } else {
           console.error('Failed to save settings:', result.error)
@@ -157,7 +163,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     { id: 'workflow', label: 'DJ Workflow', icon: Workflow },
     { id: 'library', label: 'Library', icon: Music },
     { id: 'stems', label: 'STEM Separation', icon: Layers },
-    { id: 'database', label: 'Database', icon: Database },
     { id: 'analysis', label: 'Analysis', icon: SettingsIcon },
     { id: 'ui', label: 'Interface', icon: Folder },
     { id: 'logs', label: 'Logs', icon: FileText }
@@ -238,29 +243,43 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                     {settings.workflow.enableNormalization && (
                       <>
                         <div>
+                          <label className="block text-sm font-medium mb-2">Normalization Mode</label>
+                          <select
+                            value={settings.workflow.normalizationMode}
+                            onChange={(e) => updateSettings('workflow', { normalizationMode: e.target.value })}
+                            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="metadata">Metadata Only (ReplayGain tags) - Non-destructive</option>
+                            <option value="export">Export Mode (Create normalized copies)</option>
+                            <option value="both">Both - Apply ReplayGain tags and create copies</option>
+                          </select>
+                        </div>
+
+                        <div>
                           <label className="block text-sm font-medium mb-2">Normalization Preset</label>
                           <select
                             value={settings.workflow.normalizationPreset}
                             onChange={(e) => updateSettings('workflow', { normalizationPreset: e.target.value })}
                             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                           >
-                            <option value="dj">DJ (-12 LUFS) - Optimized for club play</option>
+                            <option value="dj">DJ (-14 LUFS) - EBU R128 standard for DJs</option>
                             <option value="streaming">Streaming (-14 LUFS) - Spotify/Apple Music</option>
-                            <option value="broadcast">Broadcast (-23 LUFS) - EBU R128 standard</option>
+                            <option value="broadcast">Broadcast (-23 LUFS) - EBU R128 broadcast</option>
                             <option value="custom">Custom - Set your own targets</option>
                           </select>
                         </div>
 
                         {settings.workflow.normalizationPreset === 'custom' && (
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs text-gray-400 mb-1">Target LUFS</label>
                               <input
                                 type="number"
                                 min="-30"
                                 max="-6"
+                                step="0.1"
                                 value={settings.workflow.customTargetLufs}
-                                onChange={(e) => updateSettings('workflow', { customTargetLufs: parseInt(e.target.value) })}
+                                onChange={(e) => updateSettings('workflow', { customTargetLufs: parseFloat(e.target.value) })}
                                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                               />
                             </div>
@@ -270,58 +289,94 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                                 type="number"
                                 min="-6"
                                 max="0"
+                                step="0.1"
                                 value={settings.workflow.customTargetPeak}
-                                onChange={(e) => updateSettings('workflow', { customTargetPeak: parseInt(e.target.value) })}
+                                onChange={(e) => updateSettings('workflow', { customTargetPeak: parseFloat(e.target.value) })}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">LRA</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="30"
+                                step="0.1"
+                                value={settings.workflow.customLra}
+                                onChange={(e) => updateSettings('workflow', { customLra: parseFloat(e.target.value) })}
                                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                               />
                             </div>
                           </div>
                         )}
 
-                        <div className="space-y-3">
-                          <label className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              checked={settings.workflow.autoNormalizeOnImport}
-                              onChange={(e) => updateSettings('workflow', { autoNormalizeOnImport: e.target.checked })}
-                              className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span>Auto-normalize on import</span>
-                          </label>
+                        {(settings.workflow.normalizationMode === 'export' || settings.workflow.normalizationMode === 'both') && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Export Directory</label>
+                              <input
+                                type="text"
+                                value={settings.workflow.exportDirectory}
+                                onChange={(e) => updateSettings('workflow', { exportDirectory: e.target.value })}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                placeholder="/Users/wagner/Music/CleanCue Normalized"
+                              />
+                            </div>
 
-                          <label className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              checked={settings.workflow.createBackups}
-                              onChange={(e) => updateSettings('workflow', { createBackups: e.target.checked })}
-                              className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span>Create backup files</span>
-                          </label>
-                        </div>
+                            <div className="space-y-3">
+                              <label className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={settings.workflow.useLimiter}
+                                  onChange={(e) => updateSettings('workflow', { useLimiter: e.target.checked })}
+                                  className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                                />
+                                <div className="flex flex-col">
+                                  <span>Use additional limiter (two-pass)</span>
+                                  <span className="text-xs text-gray-400">Adds peak limiting after loudness normalization for hot tracks</span>
+                                </div>
+                              </label>
+                            </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium mb-2">Normalized File Suffix</label>
-                            <input
-                              type="text"
-                              value={settings.workflow.normalizedSuffix}
-                              onChange={(e) => updateSettings('workflow', { normalizedSuffix: e.target.value })}
-                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                              placeholder="_normalized"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium mb-2">Output Format</label>
-                            <select
-                              value={settings.workflow.outputFormat}
-                              onChange={(e) => updateSettings('workflow', { outputFormat: e.target.value })}
-                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            >
-                              <option value="wav">WAV (Uncompressed)</option>
-                              <option value="flac">FLAC (Lossless)</option>
-                              <option value="aiff">AIFF (Uncompressed)</option>
-                            </select>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium mb-2">Normalized File Suffix</label>
+                                <input
+                                  type="text"
+                                  value={settings.workflow.normalizedSuffix}
+                                  onChange={(e) => updateSettings('workflow', { normalizedSuffix: e.target.value })}
+                                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                  placeholder=" (Norm)"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2">Output Format</label>
+                                <select
+                                  value={settings.workflow.outputFormat}
+                                  onChange={(e) => updateSettings('workflow', { outputFormat: e.target.value })}
+                                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                  <option value="flac">FLAC (Recommended - Lossless)</option>
+                                  <option value="wav">WAV (Uncompressed)</option>
+                                  <option value="aiff">AIFF (Uncompressed)</option>
+                                </select>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3 mt-4">
+                          <div className="text-sm text-blue-200">
+                            <span className="font-medium">💡 Normalization Info:</span>
+                            {settings.workflow.normalizationMode === 'metadata' && (
+                              <span> Writes ReplayGain tags to your original files. Compatible with all professional DJ software.</span>
+                            )}
+                            {settings.workflow.normalizationMode === 'export' && (
+                              <span> Creates normalized copies in the export directory while preserving your originals.</span>
+                            )}
+                            {settings.workflow.normalizationMode === 'both' && (
+                              <span> Applies ReplayGain tags to originals AND creates normalized export copies.</span>
+                            )}
                           </div>
                         </div>
                       </>
@@ -382,53 +437,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               </div>
             )}
 
-            {activeTab === 'database' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-medium mb-4">Database Settings</h3>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Database Path</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      value={settings.database.path}
-                      onChange={(e) => updateSettings('database', { path: e.target.value })}
-                      className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                    <button className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors">
-                      Browse
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <label className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      checked={settings.database.autoBackup}
-                      onChange={(e) => updateSettings('database', { autoBackup: e.target.checked })}
-                      className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span>Automatic backups</span>
-                  </label>
-
-                  {settings.database.autoBackup && (
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Backup Frequency</label>
-                      <select
-                        value={settings.database.backupFrequency}
-                        onChange={(e) => updateSettings('database', { backupFrequency: e.target.value })}
-                        className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      >
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             {activeTab === 'analysis' && (
               <div className="space-y-6">
@@ -498,6 +506,129 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                         className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Analysis Engine</label>
+                  <div className="bg-gray-700 rounded-lg p-4 mb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Volume2 className="h-5 w-5 text-primary-400" />
+                      <span className="font-medium text-primary-400">Professional Audio Analysis</span>
+                    </div>
+                    <p className="text-sm text-gray-300 mb-4">Choose the analysis engine for BPM, key detection, and energy analysis.</p>
+
+                    <div className="space-y-3">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="analysisEngine"
+                          value="auto"
+                          checked={settings.analysis.engine === 'auto'}
+                          onChange={(e) => updateSettings('analysis', { engine: e.target.value as any })}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <span className="font-medium">Auto (Recommended)</span>
+                          <p className="text-sm text-gray-400">Try all engines in order: Librosa → KeyFinder → Essentia</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="analysisEngine"
+                          value="librosa"
+                          checked={settings.analysis.engine === 'librosa'}
+                          onChange={(e) => updateSettings('analysis', { engine: e.target.value as any })}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <span className="font-medium">Librosa</span>
+                          <p className="text-sm text-gray-400">Python-based scientific audio analysis library</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="analysisEngine"
+                          value="keyfinder"
+                          checked={settings.analysis.engine === 'keyfinder'}
+                          onChange={(e) => updateSettings('analysis', { engine: e.target.value as any })}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <span className="font-medium">KeyFinder</span>
+                          <p className="text-sm text-gray-400">DJ-focused key detection with Circle of Fifths algorithm</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="analysisEngine"
+                          value="essentia"
+                          checked={settings.analysis.engine === 'essentia'}
+                          onChange={(e) => updateSettings('analysis', { engine: e.target.value as any })}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <span className="font-medium">Essentia.js (Experimental)</span>
+                          <p className="text-sm text-gray-400">Research-grade MIR library from MTG Barcelona</p>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <label className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={settings.analysis.engineFallback}
+                          onChange={(e) => updateSettings('analysis', { engineFallback: e.target.checked })}
+                          className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm">Enable fallback to other engines if primary fails</span>
+                      </label>
+
+                      <label className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={settings.analysis.showEngineInfo}
+                          onChange={(e) => updateSettings('analysis', { showEngineInfo: e.target.checked })}
+                          className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm">Show analysis engine info in results</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Key Notation</label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="keyNotation"
+                        value="sharp"
+                        checked={settings.analysis.keyNotation === 'sharp'}
+                        onChange={(e) => updateSettings('analysis', { keyNotation: e.target.value as 'sharp' | 'flat' })}
+                        className="text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>Sharp (C#, D#, F#, G#, A#)</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="keyNotation"
+                        value="flat"
+                        checked={settings.analysis.keyNotation === 'flat'}
+                        onChange={(e) => updateSettings('analysis', { keyNotation: e.target.value as 'sharp' | 'flat' })}
+                        className="text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>Flat (Db, Eb, Gb, Ab, Bb)</span>
+                    </label>
                   </div>
                 </div>
               </div>
