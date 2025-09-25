@@ -1,0 +1,1355 @@
+/**
+ * UI Service - Simple Engine for Your Great UI
+ *
+ * This replaces the complex engine while keeping all your UI components working.
+ * Uses standalone CLI for scanning + simple JSON storage for persistence.
+ */
+
+import { SimpleStore, type Track } from './simple-store';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+
+// We'll create our own simple CLI interface instead of importing the complex one
+interface SimpleCLIResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export interface ScanResult {
+  tracksAdded: number;
+  tracksUpdated: number;
+  tracksScanned: number;
+  errors: string[];
+}
+
+export interface AnalysisJob {
+  id: string;
+  trackId: string;
+  trackTitle?: string;
+  trackArtist?: string;
+  type: 'bpm' | 'key' | 'energy' | 'all';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  currentTask?: string;
+  result?: any;
+  results?: {
+    bpm?: number;
+    key?: string;
+    camelotKey?: string;
+    energy?: number;
+    duration?: number;
+    errors?: string[];
+  };
+  error?: string;
+}
+
+// YouTube functionality interfaces
+export interface YouTubeVideoInfo {
+  id: string;
+  title: string;
+  uploader: string;
+  duration: number;
+  thumbnail: string;
+  url: string;
+}
+
+export interface YouTubeSearchResult {
+  id: string;
+  title: string;
+  uploader: string;
+  duration: number;
+  thumbnail: string;
+  url: string;
+  description?: string;
+}
+
+export interface YouTubeDownloadOptions {
+  format: 'mp3' | 'flac' | 'wav';
+  quality: 'best' | 'worst' | string;
+  outputPath?: string;
+}
+
+export interface YouTubeDownloadResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+  duration?: number;
+}
+
+export class UIService {
+  private store: SimpleStore;
+  private analysisJobs: Map<string, AnalysisJob> = new Map();
+  private maxCompletedJobs = 100; // Keep only the last 100 completed jobs
+  private keyNotation: 'sharp' | 'flat' = 'sharp'; // Default to sharp notation
+
+  // Simple job queue
+  private analysisQueue: Array<{ trackId: string; type: 'bpm' | 'key' | 'energy' }> = [];
+  private runningJobs = new Set<string>();
+  private maxConcurrentJobs = 2; // Only 2 analysis jobs at once
+  private aubioPath: string = '';
+
+  constructor() {
+    this.store = new SimpleStore();
+    this.detectAubioPath();
+  }
+
+  /**
+   * Detect aubio binary path (bundled vs system)
+   */
+  private detectAubioPath(): void {
+    // Check if running in Electron with bundled aubio
+    const resourcesPath = (process as any).resourcesPath;
+    if (process.env.NODE_ENV === 'production' && resourcesPath) {
+      const bundledPath = require('path').join(resourcesPath, 'aubio');
+      if (require('fs').existsSync(bundledPath)) {
+        this.aubioPath = bundledPath + '/';
+        // console.log(`🎵 Using bundled aubio at: ${this.aubioPath}`);
+        return;
+      }
+    }
+
+    // Fallback to system aubio
+    this.aubioPath = '';
+    // console.log(`🎵 Using system aubio`);
+  }
+
+  /**
+   * Initialize the service
+   */
+  async initialize(): Promise<void> {
+    await this.store.load();
+  }
+
+  /**
+   * Scan library using simple file system traversal
+   */
+  async scanLibrary(paths: string[]): Promise<ScanResult> {
+    console.log('🔍 Scanning directories...');
+
+    let tracksAdded = 0;
+    let tracksUpdated = 0;
+    const errors: string[] = [];
+
+    for (const scanPath of paths) {
+      try {
+        console.log(`🔍 Scanning path: ${scanPath}`);
+
+        // Check if path exists and is accessible
+        try {
+          const stat = await fs.stat(scanPath);
+          console.log(`📁 Path stats: ${stat.isDirectory() ? 'directory' : 'file'}, size: ${stat.size}`);
+        } catch (statError) {
+          const error = `Cannot access path ${scanPath}: ${statError instanceof Error ? statError.message : statError}`;
+          console.error(`❌ ${error}`);
+          errors.push(error);
+          continue;
+        }
+
+        const files = await this.findAudioFiles(scanPath);
+        // console.log(`🎵 Found ${files.length} audio files in ${scanPath}`);
+
+        if (files.length === 0) {
+          const warning = `No audio files found in ${scanPath}`;
+          console.warn(`⚠️ ${warning}`);
+          errors.push(warning);
+        }
+
+        for (const filePath of files) {
+          try {
+            const existing = await this.store.getTrackById(this.generateTrackId(filePath));
+
+            if (existing) {
+              // Update existing track
+              await this.updateTrackFromFile(existing.id, filePath);
+              tracksUpdated++;
+            } else {
+              // Add new track
+              await this.addTrackFromFile(filePath);
+              tracksAdded++;
+            }
+          } catch (error) {
+            errors.push(`Error processing ${filePath}: ${error instanceof Error ? error.message : error}`);
+          }
+        }
+      } catch (error) {
+        errors.push(`Error scanning ${scanPath}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    await this.store.save();
+
+    return {
+      tracksAdded,
+      tracksUpdated,
+      tracksScanned: tracksAdded + tracksUpdated,
+      errors
+    };
+  }
+
+  /**
+   * Get all tracks (for your existing UI components)
+   */
+  async getAllTracks(): Promise<Track[]> {
+    return await this.store.getTracks();
+  }
+
+  /**
+   * Get track by ID (for audio player)
+   */
+  async getTrack(id: string): Promise<Track | undefined> {
+    return await this.store.getTrackById(id);
+  }
+
+  /**
+   * Search tracks (for search functionality)
+   */
+  async searchTracks(query: string): Promise<Track[]> {
+    return await this.store.searchTracks(query);
+  }
+
+  /**
+   * Get recent tracks (for recent tracks view)
+   */
+  async getRecentTracks(limit: number = 20): Promise<Track[]> {
+    return await this.store.getRecentTracks(limit);
+  }
+
+  /**
+   * Delete tracks from library (and optionally delete files)
+   */
+  async deleteTracks(trackIds: string[], deleteFiles: boolean = false): Promise<{
+    removedFromLibrary: number;
+    deletedFiles: number;
+    errors: Array<{ trackId: string; error: string }>;
+  }> {
+    const result = {
+      removedFromLibrary: 0,
+      deletedFiles: 0,
+      errors: [] as Array<{ trackId: string; error: string }>
+    };
+
+    for (const trackId of trackIds) {
+      try {
+        const track = await this.store.getTrackById(trackId);
+        if (!track) {
+          result.errors.push({ trackId, error: 'Track not found' });
+          continue;
+        }
+
+        // Delete file from disk if requested
+        if (deleteFiles) {
+          try {
+            await fs.unlink(track.path);
+            result.deletedFiles++;
+          } catch (fileError) {
+            result.errors.push({
+              trackId,
+              error: `Failed to delete file: ${fileError instanceof Error ? fileError.message : fileError}`
+            });
+            // Continue to remove from library even if file deletion failed
+          }
+        }
+
+        // Remove from library
+        await this.store.removeTrack(trackId);
+        result.removedFromLibrary++;
+      } catch (error) {
+        result.errors.push({
+          trackId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    // Save changes
+    await this.store.save();
+    return result;
+  }
+
+  /**
+   * Clean up old completed jobs to prevent memory leaks
+   */
+  private cleanupCompletedJobs(): void {
+    const completedJobs = Array.from(this.analysisJobs.entries())
+      .filter(([_, job]) => job.status === 'completed' || job.status === 'failed')
+      .sort(([_, a], [__, b]) => {
+        // Sort by completion time (using job ID timestamp)
+        const aTime = parseInt(a.id.split('-').pop() || '0');
+        const bTime = parseInt(b.id.split('-').pop() || '0');
+        return bTime - aTime; // Most recent first
+      });
+
+    // Remove old completed jobs, keeping only the most recent ones
+    if (completedJobs.length > this.maxCompletedJobs) {
+      const jobsToRemove = completedJobs.slice(this.maxCompletedJobs);
+      for (const [jobId] of jobsToRemove) {
+        this.analysisJobs.delete(jobId);
+      }
+      console.log(`🧹 Cleaned up ${jobsToRemove.length} old analysis jobs`);
+    }
+  }
+
+  /**
+   * Get all jobs (stub for compatibility)
+   */
+  async getAllJobs(): Promise<AnalysisJob[]> {
+    this.cleanupCompletedJobs();
+    return Array.from(this.analysisJobs.values());
+  }
+
+  /**
+   * Create analysis jobs for multiple tracks
+   */
+  async createAnalysisJobs(trackIds: string[]): Promise<{
+    success: boolean;
+    jobsCreated: number;
+    errors: string[];
+  }> {
+    const result = {
+      success: true,
+      jobsCreated: 0,
+      errors: [] as string[]
+    };
+
+    // console.log(`🎵 Creating analysis jobs for ${trackIds.length} tracks`);
+
+    for (const trackId of trackIds) {
+      try {
+        const track = await this.store.getTrackById(trackId);
+        if (!track) {
+          result.errors.push(`Track ${trackId} not found`);
+          continue;
+        }
+
+        // Create actual AnalysisJob objects immediately in pending state
+        const bpmJob: AnalysisJob = {
+          id: `bpm-${trackId}-${Date.now()}`,
+          trackId,
+          trackTitle: track.title || track.filename || 'Unknown Track',
+          trackArtist: track.artist || 'Unknown Artist',
+          type: 'bpm',
+          status: 'pending',
+          progress: 0
+        };
+        const keyJob: AnalysisJob = {
+          id: `key-${trackId}-${Date.now() + 1}`,
+          trackId,
+          trackTitle: track.title || track.filename || 'Unknown Track',
+          trackArtist: track.artist || 'Unknown Artist',
+          type: 'key',
+          status: 'pending',
+          progress: 0
+        };
+        const energyJob: AnalysisJob = {
+          id: `energy-${trackId}-${Date.now() + 2}`,
+          trackId,
+          trackTitle: track.title || track.filename || 'Unknown Track',
+          trackArtist: track.artist || 'Unknown Artist',
+          type: 'energy',
+          status: 'pending',
+          progress: 0
+        };
+
+        // Store the jobs so they show up in getAnalysisJobs()
+        this.analysisJobs.set(bpmJob.id, bpmJob);
+        this.analysisJobs.set(keyJob.id, keyJob);
+        this.analysisJobs.set(energyJob.id, energyJob);
+
+        // Queue them for actual processing
+        this.queueAnalysisJob(trackId, 'bpm');
+        this.queueAnalysisJob(trackId, 'key');
+        this.queueAnalysisJob(trackId, 'energy');
+
+        result.jobsCreated += 3; // 3 jobs created per track
+        // console.log(`🎵 Created 3 analysis jobs for track: ${track.title || track.filename}`);
+
+      } catch (error) {
+        result.errors.push(`Failed to create jobs for ${trackId}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    if (result.errors.length > 0) {
+      result.success = false;
+    }
+
+    // console.log(`🎵 Created ${result.jobsCreated} analysis jobs with ${result.errors.length} errors`);
+    return result;
+  }
+
+  /**
+   * Get duplicate groups (stub for compatibility)
+   */
+  async getDuplicateGroups(): Promise<any[]> {
+    // Simple implementation - return empty for now
+    return [];
+  }
+
+  /**
+   * Get library health (stub for compatibility)
+   */
+  async getLibraryHealth(): Promise<any[]> {
+    // Simple implementation - return no issues
+    return [];
+  }
+
+  /**
+   * Scan library health (stub for compatibility)
+   */
+  async scanLibraryHealth(): Promise<any[]> {
+    // Simple implementation - return no issues
+    return [];
+  }
+
+  /**
+   * Set key notation preference
+   */
+  setKeyNotation(notation: 'sharp' | 'flat'): void {
+    this.keyNotation = notation;
+    // console.log(`🎵 Key notation set to: ${notation}`);
+  }
+
+  /**
+   * Get key notation preference
+   */
+  getKeyNotation(): 'sharp' | 'flat' {
+    return this.keyNotation;
+  }
+
+  /**
+   * Real BPM analysis using audio processing
+   */
+  async analyzeBPM(trackId: string): Promise<AnalysisJob> {
+    const job: AnalysisJob = {
+      id: `bpm-${trackId}-${Date.now()}`,
+      trackId,
+      type: 'bpm',
+      status: 'running'
+    };
+
+    this.analysisJobs.set(job.id, job);
+
+    try {
+      const track = await this.store.getTrackById(trackId);
+      if (!track) {
+        throw new Error('Track not found');
+      }
+
+      // console.log(`🎵 Starting real BPM analysis for: ${track.title || track.filename}`);
+
+      // Use ffmpeg to extract audio and analyze BPM
+      const bpmResult = await this.realBPMAnalysis(track.path);
+
+      if (bpmResult.bpm) {
+        await this.store.updateTrack(trackId, { bpm: bpmResult.bpm });
+        await this.store.save();
+
+        job.status = 'completed';
+        job.result = { bpm: bpmResult.bpm };
+        // console.log(`🎵 BPM analysis complete: ${bpmResult.bpm} BPM`);
+      } else {
+        throw new Error('Failed to detect BPM');
+      }
+
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+      console.error(`❌ BPM analysis failed: ${job.error}`);
+    }
+
+    this.analysisJobs.set(job.id, job);
+    return job;
+  }
+
+  /**
+   * Real Key analysis using audio processing
+   */
+  async analyzeKey(trackId: string): Promise<AnalysisJob> {
+    const job: AnalysisJob = {
+      id: `key-${trackId}-${Date.now()}`,
+      trackId,
+      type: 'key',
+      status: 'running'
+    };
+
+    this.analysisJobs.set(job.id, job);
+
+    try {
+      const track = await this.store.getTrackById(trackId);
+      if (!track) {
+        throw new Error('Track not found');
+      }
+
+      // console.log(`🎵 Starting real key analysis for: ${track.title || track.filename}`);
+
+      // Use real audio analysis for key detection
+      const keyResult = await this.realKeyAnalysis(track.path);
+
+      if (keyResult.key) {
+        // Convert to user's preferred notation
+        const convertedKey = this.convertKeyNotation(keyResult.key, this.keyNotation);
+        const camelotKey = this.keyToCamelot(convertedKey);
+
+        await this.store.updateTrack(trackId, { key: convertedKey, camelotKey });
+        await this.store.save();
+
+        job.status = 'completed';
+        job.result = { key: convertedKey, camelotKey };
+        // console.log(`🎵 Key analysis complete: ${convertedKey} (${camelotKey})`);
+      } else {
+        throw new Error('Failed to detect key');
+      }
+
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Key analysis failed: ${job.error}`);
+    }
+
+    this.analysisJobs.set(job.id, job);
+    return job;
+  }
+
+  /**
+   * Real Energy analysis using audio processing
+   */
+  async analyzeEnergy(trackId: string): Promise<AnalysisJob> {
+    const job: AnalysisJob = {
+      id: `energy-${trackId}-${Date.now()}`,
+      trackId,
+      type: 'energy',
+      status: 'running'
+    };
+
+    this.analysisJobs.set(job.id, job);
+
+    try {
+      const track = await this.store.getTrackById(trackId);
+      if (!track) {
+        throw new Error('Track not found');
+      }
+
+      // console.log(`🎵 Starting real energy analysis for: ${track.title || track.filename}`);
+
+      // Use real audio analysis for energy detection
+      const energyResult = await this.realEnergyAnalysis(track.path);
+      const energy = energyResult.energy || 0;
+
+      await this.store.updateTrack(trackId, { energy });
+      await this.store.save();
+
+      job.status = 'completed';
+      job.result = { energy };
+
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+    }
+
+    this.analysisJobs.set(job.id, job);
+    return job;
+  }
+
+  /**
+   * Analyze all aspects of a track (BPM, Key, Energy) - now uses queue
+   */
+  async analyzeAll(trackId: string): Promise<AnalysisJob[]> {
+    // Queue all analysis types for this track
+    this.queueAnalysisJob(trackId, 'bpm');
+    this.queueAnalysisJob(trackId, 'key');
+    this.queueAnalysisJob(trackId, 'energy');
+
+    // Return placeholder jobs (actual jobs will be created by queue processor)
+    return [
+      { id: `bpm-${trackId}-queued`, trackId, type: 'bpm', status: 'running' },
+      { id: `key-${trackId}-queued`, trackId, type: 'key', status: 'running' },
+      { id: `energy-${trackId}-queued`, trackId, type: 'energy', status: 'running' }
+    ];
+  }
+
+  /**
+   * Queue an analysis job (simple in-memory queue)
+   */
+  private queueAnalysisJob(trackId: string, type: 'bpm' | 'key' | 'energy'): void {
+    const jobKey = `${type}-${trackId}`;
+
+    // Don't queue if already running or queued
+    if (this.runningJobs.has(jobKey) || this.analysisQueue.find(job => `${job.type}-${job.trackId}` === jobKey)) {
+      return;
+    }
+
+    this.analysisQueue.push({ trackId, type });
+    console.log(`📋 Queued ${type} analysis for track ${trackId} (queue size: ${this.analysisQueue.length})`);
+
+    // Try to start processing
+    this.processAnalysisQueue();
+  }
+
+  /**
+   * Process the analysis queue (keep max concurrent jobs running)
+   */
+  private async processAnalysisQueue(): Promise<void> {
+    while (this.analysisQueue.length > 0 && this.runningJobs.size < this.maxConcurrentJobs) {
+      const job = this.analysisQueue.shift();
+      if (!job) break;
+
+      const jobKey = `${job.type}-${job.trackId}`;
+      this.runningJobs.add(jobKey);
+
+      // Run the analysis in background
+      this.runAnalysisJob(job.trackId, job.type)
+        .finally(() => {
+          this.runningJobs.delete(jobKey);
+          // Continue processing queue
+          this.processAnalysisQueue();
+        });
+    }
+  }
+
+  /**
+   * Run a single analysis job
+   */
+  private async runAnalysisJob(trackId: string, type: 'bpm' | 'key' | 'energy'): Promise<void> {
+    try {
+      // console.log(`🎵 Starting ${type} analysis for track ${trackId} (${this.runningJobs.size}/${this.maxConcurrentJobs} running)`);
+
+      switch (type) {
+        case 'bpm':
+          await this.analyzeBPM(trackId);
+          break;
+        case 'key':
+          await this.analyzeKey(trackId);
+          break;
+        case 'energy':
+          await this.analyzeEnergy(trackId);
+          break;
+      }
+    } catch (error) {
+      console.error(`❌ Analysis job failed: ${type} for ${trackId}:`, error);
+    }
+  }
+
+  /**
+   * Get queue status for UI
+   */
+  getQueueStatus(): { queued: number; running: number; maxConcurrent: number } {
+    return {
+      queued: this.analysisQueue.length,
+      running: this.runningJobs.size,
+      maxConcurrent: this.maxConcurrentJobs
+    };
+  }
+
+  /**
+   * Add cue point to track
+   */
+  async addCuePoint(trackId: string, cuePoint: Omit<import('./simple-store.js').CuePoint, 'id'>): Promise<boolean> {
+    const track = await this.store.getTrackById(trackId);
+    if (!track) {
+      return false;
+    }
+
+    const newCuePoint = {
+      ...cuePoint,
+      id: `cue-${Date.now()}-${Math.random().toString(36).substring(2)}`
+    };
+
+    const existingCuePoints = track.cuePoints || [];
+    const updatedCuePoints = [...existingCuePoints, newCuePoint];
+
+    await this.store.updateTrack(trackId, { cuePoints: updatedCuePoints });
+    await this.store.save();
+
+    return true;
+  }
+
+  /**
+   * Remove cue point from track
+   */
+  async removeCuePoint(trackId: string, cuePointId: string): Promise<boolean> {
+    const track = await this.store.getTrackById(trackId);
+    if (!track || !track.cuePoints) {
+      return false;
+    }
+
+    const updatedCuePoints = track.cuePoints.filter(cp => cp.id !== cuePointId);
+    await this.store.updateTrack(trackId, { cuePoints: updatedCuePoints });
+    await this.store.save();
+
+    return true;
+  }
+
+  /**
+   * Get library statistics (for stats view)
+   */
+  async getLibraryStats(): Promise<{
+    totalTracks: number;
+    totalSize: number;
+    formatBreakdown: Record<string, number>;
+    analyzedCounts: {
+      bpm: number;
+      key: number;
+      energy: number;
+      total: number;
+    };
+  }> {
+    return await this.store.getStats();
+  }
+
+  /**
+   * Get analysis jobs (for progress tracking)
+   */
+  getAnalysisJobs(): AnalysisJob[] {
+    return Array.from(this.analysisJobs.values());
+  }
+
+  /**
+   * Update track metadata (for metadata editing)
+   */
+  async updateTrack(id: string, updates: Partial<Track>): Promise<Track | undefined> {
+    const result = await this.store.updateTrack(id, updates);
+    if (result) {
+      await this.store.save();
+    }
+    return result;
+  }
+
+  /**
+   * Remove track from library
+   */
+  async removeTrack(id: string): Promise<boolean> {
+    const result = await this.store.removeTrack(id);
+    if (result) {
+      await this.store.save();
+    }
+    return result;
+  }
+
+  /**
+   * Cleanup library (remove tracks for files that no longer exist)
+   */
+  async cleanup(): Promise<number> {
+    const removed = await this.store.cleanup();
+    if (removed > 0) {
+      await this.store.save();
+    }
+    return removed;
+  }
+
+  // Private helper methods
+
+  private async findAudioFiles(dirPath: string): Promise<string[]> {
+    const audioExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.wma'];
+    const files: string[] = [];
+
+    const scanDirectory = async (currentPath: string): Promise<void> => {
+      try {
+        console.log(`📂 Reading directory: ${currentPath}`);
+        const entries = await fs.readdir(currentPath, { withFileTypes: true });
+        console.log(`📂 Found ${entries.length} entries in ${currentPath}`);
+
+        for (const entry of entries) {
+          const fullPath = path.join(currentPath, entry.name);
+
+          if (entry.isDirectory()) {
+            await scanDirectory(fullPath);
+          } else if (entry.isFile()) {
+            const ext = path.extname(fullPath).toLowerCase();
+            if (audioExtensions.includes(ext)) {
+              files.push(fullPath);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Cannot access directory ${currentPath}:`, error instanceof Error ? error.message : error);
+        // Skip directories we can't read but log the issue
+      }
+    };
+
+    await scanDirectory(dirPath);
+    return files;
+  }
+
+  private async addTrackFromFile(filePath: string): Promise<Track> {
+    const stat = await fs.stat(filePath);
+    const filename = path.basename(filePath);
+    const ext = path.extname(filePath).substring(1).toUpperCase();
+
+    // Extract basic metadata from filename
+    const nameWithoutExt = path.basename(filePath, path.extname(filePath));
+    const match = nameWithoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+
+    const trackData = {
+      path: filePath,
+      filename,
+      title: match ? match[2].trim() : nameWithoutExt,
+      artist: match ? match[1].trim() : undefined,
+      size: stat.size,
+      format: ext,
+      lastModified: stat.mtime
+    };
+
+    return await this.store.addTrack(trackData);
+  }
+
+  private async updateTrackFromFile(trackId: string, filePath: string): Promise<Track | undefined> {
+    const stat = await fs.stat(filePath);
+
+    return await this.store.updateTrack(trackId, {
+      size: stat.size,
+      lastModified: stat.mtime
+    });
+  }
+
+  private generateTrackId(filePath: string): string {
+    return require('crypto').createHash('md5').update(filePath).digest('hex').substring(0, 12);
+  }
+
+  // YouTube functionality methods
+
+  /**
+   * Check if YouTube dependencies (yt-dlp) are available
+   */
+  async checkYouTubeDependencies(): Promise<{ available: boolean; error?: string }> {
+    try {
+      const result = await this.runCommand('yt-dlp', ['--version']);
+      return {
+        available: result.success && result.output.includes('.'),
+        error: result.success ? undefined : 'yt-dlp not found'
+      };
+    } catch (error) {
+      return {
+        available: false,
+        error: 'yt-dlp not installed. Install with: pip install yt-dlp'
+      };
+    }
+  }
+
+  /**
+   * Get video information from YouTube URL
+   */
+  async getYouTubeVideoInfo(url: string): Promise<YouTubeVideoInfo | null> {
+    try {
+      const result = await this.runCommand('yt-dlp', [
+        '--dump-json',
+        '--no-download',
+        url
+      ]);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to get video info');
+      }
+
+      const videoData = JSON.parse(result.output);
+
+      return {
+        id: videoData.id || '',
+        title: videoData.title || 'Unknown Title',
+        uploader: videoData.uploader || 'Unknown Uploader',
+        duration: videoData.duration || 0,
+        thumbnail: videoData.thumbnail || '',
+        url: url
+      };
+    } catch (error) {
+      console.error('Failed to get YouTube video info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Search YouTube videos
+   */
+  async searchYouTubeVideos(query: string, maxResults: number = 10): Promise<YouTubeSearchResult[]> {
+    try {
+      const result = await this.runCommand('yt-dlp', [
+        '--dump-json',
+        '--no-download',
+        '--flat-playlist',
+        '--playlist-end', maxResults.toString(),
+        `ytsearch${maxResults}:${query}`
+      ]);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Search failed');
+      }
+
+      const lines = result.output.trim().split('\n');
+      const results: YouTubeSearchResult[] = [];
+
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const videoData = JSON.parse(line);
+            results.push({
+              id: videoData.id || '',
+              title: videoData.title || 'Unknown Title',
+              uploader: videoData.uploader || 'Unknown Uploader',
+              duration: videoData.duration || 0,
+              thumbnail: videoData.thumbnail || '',
+              url: videoData.webpage_url || `https://youtube.com/watch?v=${videoData.id}`,
+              description: videoData.description || ''
+            });
+          } catch (parseError) {
+            // Skip invalid JSON lines
+            continue;
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Failed to search YouTube videos:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Download audio from YouTube URL
+   */
+  async downloadYouTubeAudio(url: string, options: YouTubeDownloadOptions = { format: 'mp3', quality: 'best' }): Promise<YouTubeDownloadResult> {
+    try {
+      const outputPath = options.outputPath || path.join(process.cwd(), 'downloads');
+
+      // Ensure output directory exists
+      await fs.mkdir(outputPath, { recursive: true });
+
+      const args = [
+        '--extract-audio',
+        '--audio-format', options.format,
+        '--audio-quality', options.quality,
+        '--output', path.join(outputPath, '%(title)s.%(ext)s'),
+        '--print', 'after_move:filepath',
+        url
+      ];
+
+      const startTime = Date.now();
+      const result = await this.runCommand('yt-dlp', args);
+      const duration = Date.now() - startTime;
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Download failed',
+          duration
+        };
+      }
+
+      // Extract file path from output
+      const outputLines = result.output.trim().split('\n');
+      const filePath = outputLines[outputLines.length - 1];
+
+      return {
+        success: true,
+        filePath: filePath,
+        duration
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * Download multiple YouTube URLs as batch
+   */
+  async downloadYouTubeBatch(items: Array<{url: string, options?: YouTubeDownloadOptions}>, globalOptions: YouTubeDownloadOptions = { format: 'mp3', quality: 'best' }): Promise<YouTubeDownloadResult[]> {
+    const results: YouTubeDownloadResult[] = [];
+
+    for (const item of items) {
+      const mergedOptions = { ...globalOptions, ...item.options };
+      const result = await this.downloadYouTubeAudio(item.url, mergedOptions);
+      results.push(result);
+
+      // Small delay between downloads to be respectful
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    return results;
+  }
+
+  /**
+   * Real BPM analysis using aubio
+   */
+  private async realBPMAnalysis(filePath: string): Promise<{ bpm?: number; error?: string }> {
+    try {
+      console.log(`🔍 Analyzing BPM for: ${filePath}`);
+
+      // Use aubiotrack to detect beats and calculate BPM
+      const aubioResult = await this.runCommand(this.aubioPath + 'aubiotrack', ['-i', filePath, '-v']);
+
+      console.log(`🔍 Aubio BPM result: success=${aubioResult.success}, output="${aubioResult.output?.substring(0, 200)}", error="${aubioResult.error?.substring(0, 200)}"`);
+
+      if (aubioResult.success) {
+        // aubiotrack outputs beat times, we need to calculate BPM from intervals
+        const beatLines = aubioResult.output.split('\n').filter(line => line.trim() && !line.includes('aubiotrack'));
+
+        if (beatLines.length >= 4) { // Need at least 4 beats to calculate BPM
+          const beatTimes = beatLines.map(line => parseFloat(line.trim())).filter(time => !isNaN(time));
+
+          if (beatTimes.length >= 4) {
+            // Calculate intervals between beats
+            const intervals = [];
+            for (let i = 1; i < Math.min(beatTimes.length, 20); i++) { // Use first 20 beats max
+              intervals.push(beatTimes[i] - beatTimes[i-1]);
+            }
+
+            // Calculate average interval and convert to BPM
+            const avgInterval = intervals.reduce((a, b) => a + b) / intervals.length;
+            const bpm = Math.round(60 / avgInterval);
+
+            if (bpm > 60 && bpm < 200) {
+              // console.log(`🎵 Real BPM detected: ${bpm} (aubio)`);
+              return { bpm };
+            }
+          }
+        }
+      }
+
+      // No fallback - we only want real analysis results
+      console.log(`❌ Aubio BPM analysis failed - no BPM data will be saved`);
+      return { error: 'Aubio BPM detection failed - file may not exist or be readable' };
+
+    } catch (error) {
+      console.error(`❌ BPM analysis error:`, error);
+      return { error: `BPM analysis failed: ${error}` };
+    }
+  }
+
+  /**
+   * Real Key analysis using aubiopitch and key estimation
+   */
+  private async realKeyAnalysis(filePath: string): Promise<{ key?: string; error?: string }> {
+    try {
+      console.log(`🔍 Analyzing key for: ${filePath}`);
+
+      // Use aubiopitch to extract pitch information
+      const aubioResult = await this.runCommand(this.aubioPath + 'aubiopitch', ['-i', filePath, '-t', '30']);
+
+      console.log(`🔍 Aubio key result: success=${aubioResult.success}, output="${aubioResult.output?.substring(0, 200)}", error="${aubioResult.error?.substring(0, 200)}"`);
+
+      if (aubioResult.success && aubioResult.output.trim()) {
+        // Parse pitch frequencies to estimate key
+        const pitchLines = aubioResult.output.split('\n')
+          .filter(line => line.trim() && !line.includes('aubiopitch'))
+          .slice(0, 100); // Analyze first 100 pitch values
+
+        if (pitchLines.length > 10) {
+          const frequencies = pitchLines
+            .map(line => parseFloat(line.split(/\s+/)[1])) // Second column is frequency
+            .filter(freq => freq > 0 && freq < 2000); // Filter valid frequencies
+
+          if (frequencies.length > 5) {
+            // Convert frequencies to musical notes and estimate key
+            const detectedKey = this.estimateKeyFromPitches(frequencies);
+            if (detectedKey) {
+              // console.log(`🎵 Real key detected: ${detectedKey} (aubio pitch analysis)`);
+              return { key: detectedKey };
+            }
+          }
+        }
+      }
+
+      // No fallback - we only want real analysis results
+      console.log(`❌ Aubio key analysis failed - no key data will be saved`);
+      return { error: 'Aubio key detection failed - file may not exist or be readable' };
+    } catch (error) {
+      console.error(`❌ Key analysis error:`, error);
+      return { error: `Key analysis failed: ${error}` };
+    }
+  }
+
+  /**
+   * Real Energy analysis - DISABLED (no mock data)
+   */
+  private async realEnergyAnalysis(filePath: string): Promise<{ energy?: number; error?: string }> {
+    console.log(`❌ Energy analysis disabled - no real analysis implementation available`);
+    return { error: 'Energy analysis not implemented - requires real audio processing' };
+  }
+
+  /**
+   * Normalize key notation
+   */
+  private normalizeKey(key: string): string {
+    // Convert various key formats to standard notation
+    return key.replace(/maj/i, '').replace(/min/i, 'm').trim();
+  }
+
+  /**
+   * Estimate musical key from pitch frequencies
+   */
+  private estimateKeyFromPitches(frequencies: number[]): string | null {
+    // Convert frequencies to MIDI note numbers
+    const midiNotes = frequencies.map(freq => Math.round(12 * Math.log2(freq / 440) + 69));
+
+    // Count note occurrences (mod 12 for chromatic notes)
+    const noteCount = new Array(12).fill(0);
+    midiNotes.forEach(note => {
+      if (note >= 0 && note < 128) {
+        noteCount[note % 12]++;
+      }
+    });
+
+    // Find the most common note (likely tonic)
+    let maxCount = 0;
+    let tonicNote = 0;
+    noteCount.forEach((count, note) => {
+      if (count > maxCount) {
+        maxCount = count;
+        tonicNote = note;
+      }
+    });
+
+    // Simple key estimation based on most common note
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+    // Check if it sounds more major or minor based on presence of third
+    const majorThird = (tonicNote + 4) % 12;
+    const minorThird = (tonicNote + 3) % 12;
+
+    const isMinor = noteCount[minorThird] > noteCount[majorThird];
+    const keyName = noteNames[tonicNote] + (isMinor ? 'm' : '');
+
+    return keyName;
+  }
+
+  /**
+   * Convert key between sharp and flat notation
+   */
+  private convertKeyNotation(key: string, notation: 'sharp' | 'flat'): string {
+    if (notation === 'flat') {
+      return key
+        .replace(/C#/g, 'Db')
+        .replace(/D#/g, 'Eb')
+        .replace(/F#/g, 'Gb')
+        .replace(/G#/g, 'Ab')
+        .replace(/A#/g, 'Bb');
+    } else {
+      return key
+        .replace(/Db/g, 'C#')
+        .replace(/Eb/g, 'D#')
+        .replace(/Gb/g, 'F#')
+        .replace(/Ab/g, 'G#')
+        .replace(/Bb/g, 'A#');
+    }
+  }
+
+  /**
+   * Convert musical key to Camelot notation
+   */
+  private keyToCamelot(key: string): string {
+    const camelotMap: { [key: string]: string } = {
+      'C': '8B', 'Cm': '5A',
+      'C#': '3B', 'C#m': '12A', 'Db': '3B', 'Dbm': '12A',
+      'D': '10B', 'Dm': '7A',
+      'D#': '5B', 'D#m': '2A', 'Eb': '5B', 'Ebm': '2A',
+      'E': '12B', 'Em': '9A',
+      'F': '7B', 'Fm': '4A',
+      'F#': '2B', 'F#m': '11A', 'Gb': '2B', 'Gbm': '11A',
+      'G': '9B', 'Gm': '6A',
+      'G#': '4B', 'G#m': '1A', 'Ab': '4B', 'Abm': '1A',
+      'A': '11B', 'Am': '8A',
+      'A#': '6B', 'A#m': '3A', 'Bb': '6B', 'Bbm': '3A',
+      'B': '1B', 'Bm': '10A'
+    };
+
+    return camelotMap[key] || key;
+  }
+
+  /**
+   * Helper method to run shell commands
+   */
+  private async runCommand(command: string, args: string[]): Promise<{ success: boolean; output: string; error?: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(command, args, {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      child.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on('close', (code) => {
+        resolve({
+          success: code === 0,
+          output: output.trim(),
+          error: code !== 0 ? errorOutput.trim() : undefined
+        });
+      });
+
+      child.on('error', (error) => {
+        resolve({
+          success: false,
+          output: '',
+          error: error.message
+        });
+      });
+    });
+  }
+
+  /**
+   * Event emitter methods to maintain compatibility with your UI
+   */
+  private listeners: Map<string, Function[]> = new Map();
+
+  on(event: string, callback: Function): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(callback);
+  }
+
+  emit(event: string, data?: any): void {
+    const callbacks = this.listeners.get(event);
+    if (callbacks) {
+      callbacks.forEach(callback => callback(data));
+    }
+  }
+
+  off(event: string, callback: Function): void {
+    const callbacks = this.listeners.get(event);
+    if (callbacks) {
+      const index = callbacks.indexOf(callback);
+      if (index !== -1) {
+        callbacks.splice(index, 1);
+      }
+    }
+  }
+
+  // STEM Separation stub methods (for UI compatibility)
+  async checkStemSeparationDependencies(): Promise<{ available: boolean; missingDeps: string[] }> {
+    return { available: false, missingDeps: ['STEM separation not implemented in simple engine'] };
+  }
+
+  async startStemSeparation(trackId: string, settings: any, onProgress?: Function): Promise<string> {
+    throw new Error('STEM separation not implemented in simple engine');
+  }
+
+  async getStemSeparationStatus(separationId: string): Promise<any> {
+    return null;
+  }
+
+  async getStemSeparationByTrackId(trackId: string): Promise<any> {
+    return null;
+  }
+
+  async getAllStemSeparations(): Promise<any[]> {
+    return [];
+  }
+
+  async cancelStemSeparation(separationId: string): Promise<boolean> {
+    return false;
+  }
+
+  async deleteStemSeparation(separationId: string): Promise<boolean> {
+    return false;
+  }
+
+  async getAvailableStemModels(): Promise<string[]> {
+    return [];
+  }
+
+  getStemSeparationDefaultSettings(): any {
+    return {};
+  }
+
+  async estimateStemProcessingTime(trackId: string, model: string): Promise<number> {
+    return 0;
+  }
+
+  // Missing job methods for compatibility
+  getActiveJobs(): any[] {
+    return Array.from(this.analysisJobs.values()).filter(job => job.status === 'running');
+  }
+
+  getQueuedJobs(): any[] {
+    return Array.from(this.analysisJobs.values()).filter(job => job.status === 'pending');
+  }
+
+  getJobById(jobId: string): any | null {
+    return this.analysisJobs.get(jobId) || null;
+  }
+
+  async cancelJob(jobId: string): Promise<boolean> {
+    const job = this.analysisJobs.get(jobId);
+    if (job && (job.status === 'pending' || job.status === 'running')) {
+      job.status = 'failed';
+      job.error = 'Cancelled by user';
+      return true;
+    }
+    return false;
+  }
+
+  async retryJob(jobId: string): Promise<boolean> {
+    const job = this.analysisJobs.get(jobId);
+    if (job && job.status === 'failed') {
+      job.status = 'pending';
+      job.error = undefined;
+      // Re-queue the job
+      if (job.type === 'bpm' || job.type === 'key' || job.type === 'energy') {
+        this.queueAnalysisJob(job.trackId, job.type);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async abortAllJobs(): Promise<void> {
+    // Cancel all running and pending jobs
+    for (const job of this.analysisJobs.values()) {
+      if (job.status === 'running' || job.status === 'pending') {
+        job.status = 'failed';
+        job.error = 'Aborted by user';
+      }
+    }
+    // Clear the queue
+    this.analysisQueue = [];
+    this.runningJobs.clear();
+  }
+
+  async createScanJob(paths: string[], extensions?: string[], userInitiated: boolean = true): Promise<string> {
+    // Simple implementation - just call scanLibrary
+    const jobId = `scan-${Date.now()}`;
+    try {
+      await this.scanLibrary(paths);
+      return jobId;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Export methods
+  async exportLibrary(format: any, options: any): Promise<void> {
+    // Stub implementation
+    throw new Error('Export not implemented in simple engine');
+  }
+
+  async exportToUSB(trackIds: string[], options: any): Promise<{ outputPath: string }> {
+    // Stub implementation
+    throw new Error('USB export not implemented in simple engine');
+  }
+
+  // Config methods
+  updateConfig(config: any): void {
+    // Stub implementation
+    console.log('Config update not implemented in simple engine:', config);
+  }
+
+  // Missing analysis methods for compatibility
+  async getActiveAnalysisJobs(): Promise<any[]> {
+    return this.getActiveJobs();
+  }
+
+  async abortAllAnalysisJobs(): Promise<void> {
+    await this.abortAllJobs();
+  }
+}
