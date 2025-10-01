@@ -434,6 +434,41 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   />
                   <p className="text-sm text-gray-400 mt-1">Comma-separated list of file extensions</p>
                 </div>
+
+                {/* Library Management */}
+                <div>
+                  <h4 className="text-md font-medium mb-3 text-red-400">Library Management</h4>
+                  <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+                    <p className="text-sm text-red-300 mb-4">
+                      ⚠️ Danger Zone: These actions cannot be undone
+                    </p>
+
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to clear the entire library? This will remove all tracks and analysis data. This action cannot be undone.')) {
+                          try {
+                            const result = await window.electronAPI?.engineClearLibrary();
+                            if (result?.success) {
+                              alert(result.message || `Library cleared successfully (${result.removedCount || 0} tracks removed)`);
+                              // Optionally reload the page to reflect the changes
+                              window.location.reload();
+                            } else {
+                              alert('Failed to clear library: ' + (result?.error || 'Unknown error'));
+                            }
+                          } catch (error) {
+                            alert('Error clearing library: ' + error);
+                          }
+                        }
+                      }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md text-sm font-medium transition-colors"
+                    >
+                      Clear Entire Library
+                    </button>
+                    <p className="text-xs text-red-400 mt-2">
+                      This will remove all tracks, analysis data, and metadata from the library
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 

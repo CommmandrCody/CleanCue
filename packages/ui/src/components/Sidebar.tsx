@@ -1,4 +1,4 @@
-import { Library, Activity, Copy, BarChart3 } from 'lucide-react'
+import { Library, Activity, Copy, BarChart3, Scissors, Zap, FileText, Tag } from 'lucide-react'
 import clsx from 'clsx'
 
 interface SidebarProps {
@@ -11,6 +11,10 @@ const menuItems = [
   { id: 'health', label: 'Health', icon: Activity },
   { id: 'duplicates', label: 'Duplicates', icon: Copy },
   { id: 'analysis', label: 'Analysis', icon: BarChart3 },
+  { id: 'filename', label: 'Filename Renaming', icon: FileText },
+  { id: 'metadata', label: 'Metadata Tagging', icon: Tag },
+  { id: 'stems', label: 'Stem Separation', icon: Scissors },
+  { id: 'smartmix', label: 'Smart Mix', icon: Zap },
 ]
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {

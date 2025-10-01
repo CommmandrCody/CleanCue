@@ -10,6 +10,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import { EngineDJExporter, type EngineDJExportOptions } from './exporters/engine-dj-exporter';
 
 // Professional audio analysis with essentia.js (optional)
 let Essentia: any = null;
@@ -55,38 +56,6 @@ export interface AnalysisJob {
   error?: string;
 }
 
-// YouTube functionality interfaces
-export interface YouTubeVideoInfo {
-  id: string;
-  title: string;
-  uploader: string;
-  duration: number;
-  thumbnail: string;
-  url: string;
-}
-
-export interface YouTubeSearchResult {
-  id: string;
-  title: string;
-  uploader: string;
-  duration: number;
-  thumbnail: string;
-  url: string;
-  description?: string;
-}
-
-export interface YouTubeDownloadOptions {
-  format: 'mp3' | 'flac' | 'wav';
-  quality: 'best' | 'worst' | string;
-  outputPath?: string;
-}
-
-export interface YouTubeDownloadResult {
-  success: boolean;
-  filePath?: string;
-  error?: string;
-  duration?: number;
-}
 
 export class UIService extends EventEmitter {
   private store: SimpleStore;
@@ -247,11 +216,60 @@ export class UIService extends EventEmitter {
   /**
    * Delete tracks from library (and optionally delete files)
    */
+  async renameTrackFile(trackId: string, newFilename: string): Promise<{
+    success: boolean;
+    newPath?: string;
+    error?: string;
+  }> {
+    try {
+      const track = await this.store.getTrackById(trackId);
+      if (!track) {
+        return { success: false, error: 'Track not found' };
+      }
+
+      const oldPath = track.path;
+      const oldFilename = path.basename(oldPath);
+      const directory = path.dirname(oldPath);
+      const newPath = path.join(directory, newFilename);
+
+      // Check if filename is already correct (case-sensitive comparison)
+      if (oldFilename === newFilename) {
+        return { success: true, newPath: oldPath };
+      }
+
+      // Check if target file already exists (different file with same name)
+      try {
+        await fs.access(newPath);
+        return { success: false, error: 'A file with that name already exists' };
+      } catch {
+        // File doesn't exist, good to proceed
+      }
+
+      // Rename the file
+      await fs.rename(oldPath, newPath);
+
+      // Update track in database
+      await this.store.updateTrack(trackId, { path: newPath });
+
+      return { success: true, newPath };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
   async deleteTracks(trackIds: string[], deleteFiles: boolean = false): Promise<{
     removedFromLibrary: number;
     deletedFiles: number;
     errors: Array<{ trackId: string; error: string }>;
   }> {
+    // Backup before deleting tracks
+    if (trackIds.length > 0) {
+      await this.createBackup();
+    }
+
     const result = {
       removedFromLibrary: 0,
       deletedFiles: 0,
@@ -1060,19 +1078,117 @@ export class UIService extends EventEmitter {
     const filename = path.basename(filePath);
     const ext = path.extname(filePath).substring(1).toUpperCase();
 
-    // Extract basic metadata from filename
-    const nameWithoutExt = path.basename(filePath, path.extname(filePath));
-    const match = nameWithoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+    // Parse metadata from filename (low cost, always do this)
+    const filenameData = this.parseFilenameMetadata(filename);
 
+    // Try to read file tags (ID3, Vorbis, etc.) - low cost operation
+    let fileTags: any = {};
+    try {
+      // Use music-metadata library to read tags
+      const mm = await import('music-metadata');
+      const metadata = await mm.parseFile(filePath, { duration: true, skipCovers: true });
+
+      // Standard tags
+      fileTags = {
+        title: metadata.common.title,
+        artist: metadata.common.artist,
+        album: metadata.common.album,
+        albumArtist: metadata.common.albumartist,
+        genre: metadata.common.genre?.[0],
+        year: metadata.common.year,
+        trackNumber: metadata.common.track?.no,
+        composer: metadata.common.composer?.[0],
+        comment: metadata.common.comment?.[0],
+        duration: metadata.format.duration
+      };
+
+      // DJ software tags (Serato, Rekordbox, Traktor store BPM/Key in various fields)
+      // BPM can be in: bpm, TBPM, or embedded in comments
+      const bpmTag = metadata.native?.ID3v2?.find((tag: any) => tag.id === 'COMM' && tag.value?.description === 'BPM');
+      fileTags.bpm = metadata.common.bpm ||
+                     metadata.native?.ID3v2?.find((tag: any) => tag.id === 'TBPM')?.value ||
+                     (bpmTag?.value as any)?.text;
+
+      // Key can be in: key, TKEY, or initial key
+      const keyTag = metadata.native?.ID3v2?.find((tag: any) => tag.id === 'COMM' && tag.value?.description === 'KEY');
+      fileTags.key = metadata.common.key ||
+                     metadata.native?.ID3v2?.find((tag: any) => tag.id === 'TKEY')?.value ||
+                     (keyTag?.value as any)?.text;
+
+      // Energy level (Serato stores this)
+      const energyTag = metadata.native?.ID3v2?.find((tag: any) =>
+        tag.id === 'COMM' && (tag.value?.description === 'ENERGY' || tag.value?.description === 'Energy')
+      );
+      if (energyTag?.value && (energyTag.value as any).text) {
+        fileTags.energy = parseFloat((energyTag.value as any).text);
+      }
+
+      // Serato markers/cue points (stored in GEOB frames)
+      const seratoMarkers = metadata.native?.ID3v2?.find((tag: any) =>
+        tag.id === 'GEOB' && tag.value?.description?.includes('Serato Markers')
+      );
+      if (seratoMarkers) {
+        // TODO: Parse Serato binary format for cue points
+        console.log(`📍 Found Serato markers in ${filename}`);
+      }
+
+      console.log(`🏷️ Read tags from ${filename}:`, {
+        title: fileTags.title,
+        artist: fileTags.artist,
+        bpm: fileTags.bpm,
+        key: fileTags.key,
+        energy: fileTags.energy,
+        hasSeratoMarkers: !!seratoMarkers
+      });
+
+    } catch (tagError) {
+      // If tag reading fails, that's OK - we'll use filename data
+      console.log(`⚠️ Could not read tags from ${filename}:`, tagError instanceof Error ? tagError.message : tagError);
+    }
+
+    // Smart metadata selection: File tags (gold) > Filename parsing > Defaults
+    // This implements the "tags are gold" priority
     const trackData = {
       path: filePath,
       filename,
-      title: match ? match[2].trim() : nameWithoutExt,
-      artist: match ? match[1].trim() : undefined,
+
+      // Core metadata - file tags take priority, filename as fallback
+      title: fileTags.title || filenameData.title || filename,
+      artist: fileTags.artist || filenameData.artist,
+      album: fileTags.album,
+      albumArtist: fileTags.albumArtist,
+      genre: fileTags.genre,
+      year: fileTags.year,
+      trackNumber: fileTags.trackNumber,
+      composer: fileTags.composer,
+      comment: fileTags.comment,
+
+      // DJ metadata - file tags take priority, filename as fallback
+      bpm: fileTags.bpm || filenameData.bpm,
+      key: fileTags.key || filenameData.key,
+      energy: fileTags.energy,
+
+      // File properties
+      duration: fileTags.duration,
       size: stat.size,
       format: ext,
       lastModified: stat.mtime
     };
+
+    console.log(`💾 Storing track with data:`, {
+      filename,
+      title: trackData.title,
+      artist: trackData.artist,
+      bpm: trackData.bpm,
+      key: trackData.key,
+      energy: trackData.energy,
+      sources: {
+        title: fileTags.title ? 'file' : filenameData.title ? 'filename' : 'default',
+        artist: fileTags.artist ? 'file' : filenameData.artist ? 'filename' : 'none',
+        bpm: fileTags.bpm ? 'file' : filenameData.bpm ? 'filename' : 'none',
+        key: fileTags.key ? 'file' : filenameData.key ? 'filename' : 'none'
+      }
+    });
 
     return await this.store.addTrack(trackData);
   }
@@ -1088,6 +1204,54 @@ export class UIService extends EventEmitter {
 
   private generateTrackId(filePath: string): string {
     return require('crypto').createHash('md5').update(filePath).digest('hex').substring(0, 12);
+  }
+
+  /**
+   * Parse metadata from filename using common DJ patterns
+   */
+  private parseFilenameMetadata(filename: string): { artist?: string; title?: string; bpm?: number; key?: string; confidence: number } {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').trim();
+
+    // Try comprehensive DJ filename patterns
+    const patterns = [
+      // Artist - Title - Key - BPM (your pattern!)
+      { regex: /^(.+?)\s*-\s*(.+?)\s*-\s*([A-G0-9][#bA-Z]*)\s*-\s*(\d+)$/i, groups: { artist: 1, title: 2, key: 3, bpm: 4 }, confidence: 0.95 },
+      // Artist - Title [BPM] (Key)
+      { regex: /^(.+?)\s*-\s*(.+?)\s*\[(\d+)\]\s*\(([A-G][#b]?m?)\)/i, groups: { artist: 1, title: 2, bpm: 3, key: 4 }, confidence: 0.95 },
+      // Artist - Title [BPM]
+      { regex: /^(.+?)\s*-\s*(.+?)\s*\[(\d+)\]/i, groups: { artist: 1, title: 2, bpm: 3 }, confidence: 0.90 },
+      // Artist - Title (Key)
+      { regex: /^(.+?)\s*-\s*(.+?)\s*\(([A-G][#b]?m?)\)/i, groups: { artist: 1, title: 2, key: 3 }, confidence: 0.85 },
+      // BPM - Artist - Title
+      { regex: /^(\d+)\s*-\s*(.+?)\s*-\s*(.+?)$/i, groups: { bpm: 1, artist: 2, title: 3 }, confidence: 0.85 },
+      // Artist - Title
+      { regex: /^(.+?)\s*-\s*(.+?)$/i, groups: { artist: 1, title: 2 }, confidence: 0.70 }
+    ];
+
+    for (const pattern of patterns) {
+      const match = nameWithoutExt.match(pattern.regex);
+      if (match) {
+        const result: any = { confidence: pattern.confidence };
+
+        if (pattern.groups.artist && match[pattern.groups.artist]) {
+          result.artist = match[pattern.groups.artist].trim();
+        }
+        if (pattern.groups.title && match[pattern.groups.title]) {
+          result.title = match[pattern.groups.title].trim();
+        }
+        if (pattern.groups.bpm && match[pattern.groups.bpm]) {
+          const bpm = parseInt(match[pattern.groups.bpm]);
+          if (bpm >= 60 && bpm <= 200) result.bpm = bpm;
+        }
+        if (pattern.groups.key && match[pattern.groups.key]) {
+          result.key = match[pattern.groups.key].trim();
+        }
+
+        return result;
+      }
+    }
+
+    return { confidence: 0 };
   }
 
   private extractBPMFromOutput(output: string): number | null {
@@ -1204,170 +1368,6 @@ export class UIService extends EventEmitter {
       'F minor': '4A', 'C minor': '5A', 'G minor': '6A', 'D minor': '7A'
     };
     return camelotMap[key] || key;
-  }
-
-  // YouTube functionality methods
-
-  /**
-   * Check if YouTube dependencies (yt-dlp) are available
-   */
-  async checkYouTubeDependencies(): Promise<{ available: boolean; error?: string }> {
-    try {
-      const result = await this.runCommand('yt-dlp', ['--version']);
-      return {
-        available: result.success && result.output.includes('.'),
-        error: result.success ? undefined : 'yt-dlp not found'
-      };
-    } catch (error) {
-      return {
-        available: false,
-        error: 'yt-dlp not installed. Install with: pip install yt-dlp'
-      };
-    }
-  }
-
-  /**
-   * Get video information from YouTube URL
-   */
-  async getYouTubeVideoInfo(url: string): Promise<YouTubeVideoInfo | null> {
-    try {
-      const result = await this.runCommand('yt-dlp', [
-        '--dump-json',
-        '--no-download',
-        url
-      ]);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to get video info');
-      }
-
-      const videoData = JSON.parse(result.output);
-
-      return {
-        id: videoData.id || '',
-        title: videoData.title || 'Unknown Title',
-        uploader: videoData.uploader || 'Unknown Uploader',
-        duration: videoData.duration || 0,
-        thumbnail: videoData.thumbnail || '',
-        url: url
-      };
-    } catch (error) {
-      console.error('Failed to get YouTube video info:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Search YouTube videos
-   */
-  async searchYouTubeVideos(query: string, maxResults: number = 10): Promise<YouTubeSearchResult[]> {
-    try {
-      const result = await this.runCommand('yt-dlp', [
-        '--dump-json',
-        '--no-download',
-        '--flat-playlist',
-        '--playlist-end', maxResults.toString(),
-        `ytsearch${maxResults}:${query}`
-      ]);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Search failed');
-      }
-
-      const lines = result.output.trim().split('\n');
-      const results: YouTubeSearchResult[] = [];
-
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const videoData = JSON.parse(line);
-            results.push({
-              id: videoData.id || '',
-              title: videoData.title || 'Unknown Title',
-              uploader: videoData.uploader || 'Unknown Uploader',
-              duration: videoData.duration || 0,
-              thumbnail: videoData.thumbnail || '',
-              url: videoData.webpage_url || `https://youtube.com/watch?v=${videoData.id}`,
-              description: videoData.description || ''
-            });
-          } catch (parseError) {
-            // Skip invalid JSON lines
-            continue;
-          }
-        }
-      }
-
-      return results;
-    } catch (error) {
-      console.error('Failed to search YouTube videos:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Download audio from YouTube URL
-   */
-  async downloadYouTubeAudio(url: string, options: YouTubeDownloadOptions = { format: 'mp3', quality: 'best' }): Promise<YouTubeDownloadResult> {
-    try {
-      const outputPath = options.outputPath || path.join(process.cwd(), 'downloads');
-
-      // Ensure output directory exists
-      await fs.mkdir(outputPath, { recursive: true });
-
-      const args = [
-        '--extract-audio',
-        '--audio-format', options.format,
-        '--audio-quality', options.quality,
-        '--output', path.join(outputPath, '%(title)s.%(ext)s'),
-        '--print', 'after_move:filepath',
-        url
-      ];
-
-      const startTime = Date.now();
-      const result = await this.runCommand('yt-dlp', args);
-      const duration = Date.now() - startTime;
-
-      if (!result.success) {
-        return {
-          success: false,
-          error: result.error || 'Download failed',
-          duration
-        };
-      }
-
-      // Extract file path from output
-      const outputLines = result.output.trim().split('\n');
-      const filePath = outputLines[outputLines.length - 1];
-
-      return {
-        success: true,
-        filePath: filePath,
-        duration
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  /**
-   * Download multiple YouTube URLs as batch
-   */
-  async downloadYouTubeBatch(items: Array<{url: string, options?: YouTubeDownloadOptions}>, globalOptions: YouTubeDownloadOptions = { format: 'mp3', quality: 'best' }): Promise<YouTubeDownloadResult[]> {
-    const results: YouTubeDownloadResult[] = [];
-
-    for (const item of items) {
-      const mergedOptions = { ...globalOptions, ...item.options };
-      const result = await this.downloadYouTubeAudio(item.url, mergedOptions);
-      results.push(result);
-
-      // Small delay between downloads to be respectful
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    return results;
   }
 
   /**
@@ -2083,14 +2083,79 @@ export class UIService extends EventEmitter {
   }
 
   // Export methods
+  /**
+   * Create a backup of the database before dangerous operations
+   */
+  async createBackup(): Promise<string> {
+    try {
+      const backupPath = await this.store.backup();
+      console.log(`✅ Database backup created: ${backupPath}`);
+      return backupPath;
+    } catch (error) {
+      console.error('Backup failed:', error);
+      throw error;
+    }
+  }
+
   async exportLibrary(format: any, options: any): Promise<void> {
+    // Always backup before export
+    await this.createBackup();
+
     // Stub implementation
     throw new Error('Export not implemented in simple engine');
   }
 
-  async exportToUSB(trackIds: string[], options: any): Promise<{ outputPath: string }> {
-    // Stub implementation
-    throw new Error('USB export not implemented in simple engine');
+  async exportToUSB(trackIds: string[], options: any): Promise<{ success: boolean; outputPath?: string; tracksExported?: number; error?: string }> {
+    // Always backup before export
+    await this.createBackup();
+
+    try {
+      // Get tracks to export
+      const tracks = await Promise.all(
+        trackIds.map(id => this.store.getTrackById(id))
+      );
+
+      const validTracks = tracks.filter((t): t is Track => t !== undefined);
+
+      if (validTracks.length === 0) {
+        return {
+          success: false,
+          error: 'No valid tracks to export'
+        };
+      }
+
+      // Prepare export options
+      const exportOptions: EngineDJExportOptions = {
+        outputPath: options.outputPath || '/Volumes/USB',
+        copyFiles: options.copyFiles !== false,
+        createPerformanceData: options.createPerformanceData || false,
+        playlistName: options.playlistName || 'CleanCue Export'
+      };
+
+      // Export using Engine DJ exporter
+      const exporter = new EngineDJExporter();
+      const result = await exporter.export(validTracks, exportOptions);
+
+      if (result.success) {
+        console.log(`✅ Successfully exported ${result.tracksExported} tracks to Engine DJ`);
+        return {
+          success: true,
+          outputPath: result.databasePath,
+          tracksExported: result.tracksExported
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Export failed'
+        };
+      }
+    } catch (error) {
+      console.error('USB export failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   }
 
   // Config methods

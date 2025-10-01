@@ -11,7 +11,6 @@ describe('Header DJ Workflow Features', () => {
     onScan: vi.fn(),
     onSettings: vi.fn(),
     onImport: vi.fn(),
-    onYouTubeDownloader: vi.fn(),
     onStemQueue: vi.fn(),
     showLogViewer: false,
     onToggleLogViewer: vi.fn()
@@ -119,21 +118,9 @@ describe('Header DJ Workflow Features', () => {
       const djToolsButton = screen.getByRole('button', { name: /DJ Tools/ })
       await user.click(djToolsButton)
 
-      expect(screen.getByText('YouTube Downloader')).toBeInTheDocument()
       expect(screen.getByText('STEM Separation')).toBeInTheDocument()
     })
 
-    it('calls onYouTubeDownloader when clicked', async () => {
-      render(<Header {...mockProps} />)
-
-      const djToolsButton = screen.getByRole('button', { name: /DJ Tools/ })
-      await user.click(djToolsButton)
-
-      const youtubeButton = screen.getByText('YouTube Downloader')
-      await user.click(youtubeButton)
-
-      expect(mockProps.onYouTubeDownloader).toHaveBeenCalledTimes(1)
-    })
 
     it('calls onStemQueue when STEM Separation clicked', async () => {
       render(<Header {...mockProps} />)
@@ -310,7 +297,6 @@ describe('Header DJ Workflow Features', () => {
         onScan: vi.fn(),
         onSettings: vi.fn(),
         onImport: vi.fn(),
-        onYouTubeDownloader: vi.fn(),
         onStemQueue: vi.fn(),
         showLogViewer: true,
         onToggleLogViewer: vi.fn()
@@ -327,8 +313,7 @@ describe('Header DJ Workflow Features', () => {
       const minimalProps = {
         onScan: vi.fn(),
         onSettings: vi.fn(),
-        onImport: vi.fn(),
-        onYouTubeDownloader: vi.fn()
+        onImport: vi.fn()
       }
 
       render(<Header {...minimalProps} />)

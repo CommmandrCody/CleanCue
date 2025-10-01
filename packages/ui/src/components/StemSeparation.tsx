@@ -1,699 +1,624 @@
 import { useState, useEffect } from 'react'
-import {
-  Music,
-  Mic,
-  Drum,
-  Guitar,
-  Play,
-  Pause,
-  Download,
-  Settings,
-  Zap,
-  Clock,
-  FileAudio,
-  RotateCcw,
-  Trash2,
-  AlertCircle,
-  Activity
-} from 'lucide-react'
+import { Play, Pause, RotateCcw, Music, Activity, Scissors, RefreshCw, Plus, FileAudio, X } from 'lucide-react'
 import clsx from 'clsx'
 
-interface StemTrack {
+interface StemSeparationJob {
+  id: string
+  trackId: string
+  trackTitle: string
+  trackArtist: string
+  status: 'pending' | 'processing' | 'completed' | 'error' | 'cancelled'
+  progress: number
+  errorMessage?: string
+  startedAt?: number
+  completedAt?: number
+  addedAt: number
+  processingTimeMs?: number
+  settings: {
+    model: string
+    outputFormat: string
+    quality: string
+  }
+  results?: {
+    vocalsPath?: string
+    drumsPath?: string
+    bassPath?: string
+    otherPath?: string
+  }
+}
+
+interface Track {
   id: string
   title: string
   artist: string
+  album?: string
   path: string
-  duration: number
-  stemStatus: 'none' | 'processing' | 'completed' | 'error'
-  stemProgress?: number
-  stems?: {
-    vocals: string
-    drums: string
-    bass: string
-    other: string
-  }
-  processingTime?: number
-  lastProcessed?: Date
-}
-
-interface StemSettings {
-  model: 'htdemucs' | 'htdemucs_ft' | 'htdemucs_6s' | 'mdx_extra'
-  outputFormat: 'wav' | 'flac' | 'mp3'
-  quality: 'low' | 'medium' | 'high'
-  autoNormalize: boolean
-  outputBitrate?: number
-  segments: number
-  overlap: number
-  clipMode: 'rescale' | 'clamp'
-  mp3Bitrate?: number
-  jobs?: number
-  fileRenaming: {
-    enabled: boolean
-    namingPattern: 'original-key' | 'original-key-tempo' | 'key-original' | 'key-tempo-original' | 'tempo-key-original'
-  }
-  keyNotation: {
-    primaryNotation: 'camelot' | 'standard' | 'flats' | 'sharps'
-    addZeroToSingleDigit: boolean
-    extraKeyColumn: 'none' | 'standard' | 'flats' | 'sharps'
-    useCamelotInComments: boolean
-  }
-  djSoftwareIntegration: {
-    serato: {
-      enabled: boolean
-      exportKey: boolean
-      exportTitleArtistComment: boolean
-      exportCuePoints: boolean
-    }
-    traktor: {
-      enabled: boolean
-      exportKey: boolean
-      exportTitleArtistComment: boolean
-      exportCuePoints: boolean
-    }
-    rekordbox: {
-      enabled: boolean
-      exportKey: boolean
-      exportTitleArtistComment: boolean
-      exportCuePoints: boolean
-    }
-    overwriteExistingCuePoints: boolean
-  }
-  stemNaming: {
-    includeOriginalName: boolean
-    stemSuffix: 'short' | 'long' | 'custom'
-    customSuffixes: {
-      vocals: string
-      drums: string
-      bass: string
-      other: string
-    }
-  }
-}
-
-const stemModels = [
-  {
-    id: 'htdemucs',
-    name: 'Hybrid Demucs',
-    description: 'High-quality hybrid transformer separation',
-    stems: ['Vocals', 'Drums', 'Bass', 'Other'],
-    speed: 'Medium',
-    quality: 'Excellent'
-  },
-  {
-    id: 'htdemucs_ft',
-    name: 'Hybrid Demucs FT',
-    description: 'Fine-tuned version with improved quality',
-    stems: ['Vocals', 'Drums', 'Bass', 'Other'],
-    speed: 'Medium',
-    quality: 'Excellent'
-  },
-  {
-    id: 'htdemucs_6s',
-    name: 'Hybrid Demucs 6-Stem',
-    description: 'Extended 6-stem separation including piano',
-    stems: ['Vocals', 'Drums', 'Bass', 'Other', 'Piano', 'Guitar'],
-    speed: 'Slow',
-    quality: 'Best'
-  },
-  {
-    id: 'mdx_extra',
-    name: 'MDX Extra',
-    description: 'MDX-based model for specific use cases',
-    stems: ['Vocals', 'Drums', 'Bass', 'Other'],
-    speed: 'Fast',
-    quality: 'Good'
-  }
-]
-
-const stemIcons = {
-  vocals: <Mic className="h-4 w-4" />,
-  drums: <Drum className="h-4 w-4" />,
-  bass: <Guitar className="h-4 w-4" />,
-  other: <Music className="h-4 w-4" />
+  duration?: number
 }
 
 export function StemSeparation() {
-  const [tracks, setTracks] = useState<StemTrack[]>([])
-  const [selectedTracks, setSelectedTracks] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showSettings, setShowSettings] = useState(false)
-  const [processing, setProcessing] = useState(false)
-  const [playingStems, setPlayingStems] = useState<{[key: string]: string}>({})
-  const [settings, setSettings] = useState<StemSettings | null>(null)
+  const [jobs, setJobs] = useState<StemSeparationJob[]>([])
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showTrackSelection, setShowTrackSelection] = useState(false)
+  const [availableTracks, setAvailableTracks] = useState<Track[]>([])
+  const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set())
+  const [loadingTracks, setLoadingTracks] = useState(false)
 
-  useEffect(() => {
-    loadSettings()
-  }, [])
+  // Calculate stats from jobs
+  const stats = {
+    processing: jobs.filter(job => job.status === 'processing').length,
+    pending: jobs.filter(job => job.status === 'pending').length,
+    completed: jobs.filter(job => job.status === 'completed').length,
+    failed: jobs.filter(job => job.status === 'error').length,
+    total: jobs.length
+  }
 
-  const loadSettings = async () => {
+  // Load stem separation jobs from backend
+  const loadJobs = async () => {
     try {
+      console.log('[UI] StemSeparation: loadJobs() called')
       if (window.electronAPI) {
-        const response = await window.electronAPI.stemGetDefaultSettings()
-        if (response.success) {
-          setSettings(response.settings)
+        console.log('[UI] StemSeparation: electronAPI available, calling stemGetAll()')
+        const response = await window.electronAPI.stemGetAll()
+        console.log('[UI] StemSeparation: stemGetAll response:', response)
+        if (response && response.success) {
+          // Convert separations to jobs format for display
+          const jobs: StemSeparationJob[] = response.separations.map((sep: any) => ({
+            id: sep.id,
+            trackId: sep.trackId,
+            trackTitle: sep.trackTitle || 'Unknown Track',
+            trackArtist: sep.trackArtist || 'Unknown Artist',
+            status: sep.status,
+            progress: sep.progress || 0,
+            addedAt: new Date(sep.createdAt).getTime(),
+            startedAt: sep.startedAt ? new Date(sep.startedAt).getTime() : undefined,
+            completedAt: sep.completedAt ? new Date(sep.completedAt).getTime() : undefined,
+            processingTimeMs: sep.processingTimeMs,
+            errorMessage: sep.error,
+            settings: {
+              model: sep.model || 'ffmpeg-basic',
+              outputFormat: sep.outputFormat || 'wav',
+              quality: sep.quality || 'standard'
+            },
+            results: sep.status === 'completed' ? {
+              vocalsPath: sep.vocalsPath,
+              drumsPath: sep.drumsPath,
+              bassPath: sep.bassPath,
+              otherPath: sep.otherPath
+            } : undefined
+          }))
+          setJobs(jobs)
         } else {
-          throw new Error((response as any).error || 'Failed to load settings')
+          console.log('[UI] StemSeparation: stemGetAll failed:', response)
+          setJobs([])
         }
+      } else {
+        console.log('[UI] StemSeparation: electronAPI not available')
       }
     } catch (error) {
-      console.error('Failed to load STEM settings:', error)
-      // Set minimal defaults only if backend fails
-      setSettings({
-        model: 'htdemucs',
-        outputFormat: 'wav',
-        quality: 'high',
-        autoNormalize: true,
-        segments: 4,
-        overlap: 0.25,
-        clipMode: 'rescale',
-        fileRenaming: { enabled: false, namingPattern: 'original-key' },
-        keyNotation: { primaryNotation: 'camelot', addZeroToSingleDigit: false, extraKeyColumn: 'none', useCamelotInComments: false },
-        djSoftwareIntegration: {
-          serato: { enabled: false, exportKey: false, exportTitleArtistComment: false, exportCuePoints: false },
-          traktor: { enabled: false, exportKey: false, exportTitleArtistComment: false, exportCuePoints: false },
-          rekordbox: { enabled: false, exportKey: false, exportTitleArtistComment: false, exportCuePoints: false },
-          overwriteExistingCuePoints: false
-        },
-        stemNaming: { includeOriginalName: true, stemSuffix: 'long', customSuffixes: { vocals: 'vocals', drums: 'drums', bass: 'bass', other: 'other' } }
-      })
+      console.error('[UI] StemSeparation: Failed to load stem separation jobs:', error)
     }
   }
 
-  useEffect(() => {
-    loadTracks()
-  }, [])
+  // Manual refresh function
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await loadJobs()
+    } catch (error) {
+      console.error('Refresh failed:', error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
+  // Start processing queue - placeholder for now
+  const handleStartProcessing = async () => {
+    try {
+      console.log('[UI] StemSeparation: Start processing not yet implemented in simple-engine')
+      // For now, just update the UI state
+      setIsProcessing(true)
+      setTimeout(() => setIsProcessing(false), 3000) // Mock processing for 3 seconds
+    } catch (error) {
+      console.error('Failed to start stem separation processing:', error)
+    }
+  }
+
+  // Stop processing - placeholder for now
+  const handleStopProcessing = async () => {
+    try {
+      console.log('[UI] StemSeparation: Stop processing not yet implemented in simple-engine')
+      setIsProcessing(false)
+    } catch (error) {
+      console.error('Failed to stop stem separation processing:', error)
+    }
+  }
+
+  // Clear completed jobs - placeholder for now
+  const handleClearCompleted = async () => {
+    try {
+      console.log('[UI] StemSeparation: Clear completed not yet implemented in simple-engine')
+      // For now, just clear the local jobs list
+      setJobs([])
+    } catch (error) {
+      console.error('Failed to clear completed jobs:', error)
+    }
+  }
+
+  // Load available tracks from library
   const loadTracks = async () => {
+    setLoadingTracks(true)
     try {
-      setLoading(true)
       if (window.electronAPI) {
-        const tracksResponse = await window.electronAPI.engineGetTracks()
-        if (tracksResponse.success) {
-          const separationsResponse = await window.electronAPI.stemGetAll()
-          const separations = separationsResponse.success ? separationsResponse.separations : []
-
-          const stemTracks: StemTrack[] = tracksResponse.tracks.map((track: any) => {
-            const separation = separations.find((sep: any) => sep.trackId === track.id)
-            return {
-              id: track.id,
-              title: track.title || 'Unknown Title',
-              artist: track.artist || 'Unknown Artist',
-              path: track.path,
-              duration: track.durationMs ? Math.floor(track.durationMs / 1000) : 0,
-              stemStatus: separation ? separation.status : 'none',
-              stemProgress: separation ? separation.progress : undefined,
-              stems: separation && separation.status === 'completed' ? {
-                vocals: separation.vocalsPath,
-                drums: separation.drumsPath,
-                bass: separation.bassPath,
-                other: separation.otherPath
-              } : undefined,
-              processingTime: separation ? separation.processingTimeMs : undefined,
-              lastProcessed: separation ? new Date(separation.createdAt) : undefined
-            }
-          })
-          setTracks(stemTracks)
+        const tracks = await window.electronAPI.getAllTracks()
+        if (Array.isArray(tracks)) {
+          setAvailableTracks(tracks)
         } else {
-          throw new Error((tracksResponse as any).error || 'Failed to load tracks')
+          console.log('[UI] StemSeparation: Failed to load tracks - not an array:', tracks)
+          setAvailableTracks([])
         }
       }
     } catch (error) {
-      console.error('Failed to load tracks:', error)
+      console.error('[UI] StemSeparation: Failed to load tracks:', error)
     } finally {
-      setLoading(false)
+      setLoadingTracks(false)
     }
   }
 
-  const toggleTrackSelection = (trackId: string) => {
-    setSelectedTracks(prev =>
-      prev.includes(trackId)
-        ? prev.filter(id => id !== trackId)
-        : [...prev, trackId]
-    )
-  }
-
-  const handleProcessStems = async () => {
-    if (selectedTracks.length === 0 || !settings) return
-
-    setProcessing(true)
-    try {
-      if (window.electronAPI) {
-        // Start STEM separation for each selected track
-        for (const trackId of selectedTracks) {
-          const response = await window.electronAPI.stemStartSeparation(trackId, settings)
-          if (!response.success) {
-            console.error(`Failed to start separation for track ${trackId}:`, (response as any).error)
-          }
-        }
-        await loadTracks() // Reload to get updated status
+  // Handle track selection
+  const handleTrackSelection = (trackId: string) => {
+    setSelectedTracks(prev => {
+      const newSelection = new Set(prev)
+      if (newSelection.has(trackId)) {
+        newSelection.delete(trackId)
+      } else {
+        newSelection.add(trackId)
       }
-    } catch (error) {
-      console.error('Failed to process stems:', error)
-    } finally {
-      setProcessing(false)
-    }
+      return newSelection
+    })
   }
 
-  const handlePlayStem = (trackId: string, stemType: string) => {
-    const currentPlaying = playingStems[trackId]
-    if (currentPlaying === stemType) {
-      // Stop playing
-      setPlayingStems(prev => ({ ...prev, [trackId]: '' }))
-    } else {
-      // Start playing
-      setPlayingStems(prev => ({ ...prev, [trackId]: stemType }))
-    }
-  }
+  // Submit selected tracks for stem separation
+  const handleSubmitTracks = async () => {
+    if (selectedTracks.size === 0) return
 
-  const handleDownloadStems = async (trackId: string) => {
     try {
-      if (window.electronAPI) {
-        // Get the stem separation data for this track
-        const response = await window.electronAPI.stemGetByTrack(trackId)
-        if (response.success && response.result) {
-          // Show the stems folder in file explorer
-          const stemPaths = [
-            response.result.vocalsPath,
-            response.result.drumsPath,
-            response.result.bassPath,
-            response.result.otherPath
-          ].filter(Boolean)
+      const tracksToSubmit = availableTracks.filter(track => selectedTracks.has(track.id))
 
-          if (stemPaths.length > 0) {
-            await window.electronAPI.showItemInFolder(stemPaths[0])
-          }
+      for (const track of tracksToSubmit) {
+        if (window.electronAPI) {
+          console.log('[UI] StemSeparation: Submitting track for separation:', track.title)
+          await window.electronAPI.stemStartSeparation(track.id, {
+            model: 'ffmpeg-basic',
+            outputFormat: 'wav',
+            quality: 'standard'
+          })
         }
       }
+
+      // Clear selection and close dialog
+      setSelectedTracks(new Set())
+      setShowTrackSelection(false)
+
+      // Refresh jobs list
+      await loadJobs()
     } catch (error) {
-      console.error('Failed to show stems folder:', error)
+      console.error('[UI] StemSeparation: Failed to submit tracks:', error)
     }
   }
 
-  const handleDeleteStems = async (trackId: string) => {
-    try {
-      if (window.electronAPI) {
-        // Get the separation ID for this track first
-        const response = await window.electronAPI.stemGetByTrack(trackId)
-        if (response.success && response.result) {
-          const deleteResponse = await window.electronAPI.stemDelete(response.result.id)
-          if (deleteResponse.success) {
-            await loadTracks()
+  // Open track selection dialog
+  const handleAddTracks = async () => {
+    setShowTrackSelection(true)
+    await loadTracks()
+  }
+
+  // Load jobs on component mount
+  useEffect(() => {
+    console.log('[UI] StemSeparation: useEffect triggered, component mounted')
+    loadJobs()
+
+    // Set up real-time event listeners for stem separation updates
+    if (window.electronAPI) {
+      const handleStemSeparationStarted = (...args: any[]) => {
+        const data = args.length > 1 ? args[1] : args[0]
+        console.log('[UI] Stem separation started event received:', data)
+
+        setJobs(prevJobs => {
+          const existingJobIndex = prevJobs.findIndex(job => job.trackId === data.trackId)
+          if (existingJobIndex >= 0) {
+            return prevJobs.map(job =>
+              job.trackId === data.trackId ? { ...job, status: 'processing' as const, startedAt: Date.now() } : job
+            )
           } else {
-            console.error('Failed to delete stems:', (deleteResponse as any).error)
+            return [...prevJobs, {
+              id: `job-${Date.now()}`,
+              trackId: data.trackId || '',
+              trackTitle: data.trackTitle || 'Unknown Track',
+              trackArtist: data.trackArtist || 'Unknown Artist',
+              status: 'processing' as const,
+              progress: 0,
+              addedAt: Date.now(),
+              startedAt: Date.now(),
+              settings: {
+                model: 'ffmpeg-basic',
+                outputFormat: 'wav',
+                quality: 'standard'
+              }
+            }]
           }
+        })
+      }
+
+      const handleStemSeparationProgress = (...args: any[]) => {
+        const data = args.length > 1 ? args[1] : args[0]
+        console.log('[UI] Stem separation progress event received:', data)
+
+        setJobs(prevJobs => prevJobs.map(job =>
+          job.trackId === data.trackId ? { ...job, progress: data.progress || 0 } : job
+        ))
+      }
+
+      const handleStemSeparationCompleted = (...args: any[]) => {
+        const data = args.length > 1 ? args[1] : args[0]
+        console.log('[UI] Stem separation completed event received:', data)
+
+        setJobs(prevJobs => prevJobs.map(job =>
+          job.trackId === data.trackId ? {
+            ...job,
+            status: data.error ? 'error' as const : 'completed' as const,
+            progress: 100,
+            completedAt: Date.now(),
+            processingTimeMs: job.startedAt ? Date.now() - job.startedAt : undefined,
+            results: data.results,
+            errorMessage: data.error
+          } : job
+        ))
+      }
+
+      // Add event listeners using the correct event names from simple-engine
+      window.electronAPI.on('stemSeparation:started', handleStemSeparationStarted)
+      window.electronAPI.on('stemSeparation:progress', handleStemSeparationProgress)
+      window.electronAPI.on('stemSeparation:completed', handleStemSeparationCompleted)
+
+      // Cleanup event listeners
+      return () => {
+        if (window.electronAPI) {
+          window.electronAPI.removeListener('stemSeparation:started', handleStemSeparationStarted)
+          window.electronAPI.removeListener('stemSeparation:progress', handleStemSeparationProgress)
+          window.electronAPI.removeListener('stemSeparation:completed', handleStemSeparationCompleted)
         }
       }
-    } catch (error) {
-      console.error('Failed to delete stems:', error)
     }
-  }
-
-  const formatProcessingTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`
-    }
-    return `${seconds}s`
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'text-green-400'
-      case 'processing': return 'text-yellow-400'
-      case 'error': return 'text-red-400'
-      default: return 'text-gray-400'
-    }
-  }
-
-  const completedTracks = tracks.filter(track => track.stemStatus === 'completed')
-  const processingTracks = tracks.filter(track => track.stemStatus === 'processing')
+  }, [])
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">STEM Separation</h2>
-          <p className="text-gray-400">
-            Extract vocals, drums, bass, and other elements from your tracks
-          </p>
+          <h2 className="text-2xl font-bold">Stem Separation</h2>
+          <p className="text-gray-400">Separate audio tracks into vocals, drums, bass, and other components</p>
         </div>
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => setShowSettings(true)}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm font-medium transition-colors"
+            onClick={handleAddTracks}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
           >
-            <Settings className="h-4 w-4 inline mr-2" />
-            Settings
+            <Plus className="h-4 w-4 inline mr-2" />
+            Add Tracks
           </button>
 
           <button
-            onClick={handleProcessStems}
-            disabled={selectedTracks.length === 0 || processing}
+            onClick={handleStartProcessing}
+            disabled={isProcessing || stats.pending === 0}
             className={clsx(
               'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTracks.length > 0 && !processing
-                ? 'bg-primary-600 hover:bg-primary-700 text-white'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              !isProcessing && stats.pending > 0
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
             )}
           >
-            {processing ? (
+            {isProcessing ? (
               <>
-                <Zap className="h-4 w-4 inline mr-2 animate-spin" />
+                <Activity className="h-4 w-4 inline mr-2 animate-spin" />
                 Processing...
               </>
             ) : (
               <>
-                <Activity className="h-4 w-4 inline mr-2" />
-                Process ({selectedTracks.length})
+                <Play className="h-4 w-4 inline mr-2" />
+                Start Queue ({stats.pending})
               </>
             )}
+          </button>
+
+          <button
+            onClick={handleClearCompleted}
+            disabled={stats.completed === 0}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+          >
+            <RotateCcw className="h-4 w-4 inline mr-2" />
+            Clear Completed
+          </button>
+
+          <button
+            onClick={handleStopProcessing}
+            disabled={!isProcessing}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+          >
+            <Pause className="h-4 w-4 inline mr-2" />
+            Stop Processing
+          </button>
+
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+          >
+            <RefreshCw className={clsx('h-4 w-4 inline mr-2', isRefreshing && 'animate-spin')} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats Overview */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-primary-400">
-            {loading ? '...' : tracks.length}
-          </div>
-          <div className="text-sm text-gray-400">Total Tracks</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-green-400">
-            {loading ? '...' : completedTracks.length}
-          </div>
-          <div className="text-sm text-gray-400">Processed</div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-yellow-400">
-            {loading ? '...' : processingTracks.length}
-          </div>
+          <div className="text-2xl font-bold text-blue-400">{stats.processing}</div>
           <div className="text-sm text-gray-400">Processing</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
-          <div className="text-2xl font-bold text-blue-400">{selectedTracks.length}</div>
-          <div className="text-sm text-gray-400">Selected</div>
+          <div className="text-2xl font-bold text-yellow-400">{stats.pending}</div>
+          <div className="text-sm text-gray-400">Pending</div>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
+          <div className="text-sm text-gray-400">Completed</div>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <div className="text-2xl font-bold text-red-400">{stats.failed}</div>
+          <div className="text-sm text-gray-400">Failed</div>
         </div>
       </div>
 
-      {/* Track List */}
+      {/* Stem Separation Queue */}
       <div className="bg-gray-800 rounded-lg overflow-hidden">
-        <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-700 text-sm font-medium text-gray-300">
-          <div className="col-span-1">Select</div>
-          <div className="col-span-3">Track</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2">Progress</div>
-          <div className="col-span-2">Stems</div>
-          <div className="col-span-2">Actions</div>
+        <div className="px-6 py-4 bg-gray-700 border-b border-gray-600">
+          <h3 className="font-medium">Stem Separation Queue ({stats.total} jobs)</h3>
         </div>
 
-        <div className="divide-y divide-gray-700">
-          {loading ? (
-            <div className="text-center py-12 text-gray-400">
-              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50 animate-pulse" />
-              <p>Loading tracks...</p>
-            </div>
-          ) : tracks.map((track) => (
-            <div
-              key={track.id}
-              className={clsx(
-                'grid grid-cols-12 gap-4 px-6 py-4 hover:bg-gray-700 transition-colors',
-                selectedTracks.includes(track.id) && 'bg-primary-900/20'
-              )}
-            >
-              {/* Selection */}
-              <div className="col-span-1">
-                <input
-                  type="checkbox"
-                  checked={selectedTracks.includes(track.id)}
-                  onChange={() => toggleTrackSelection(track.id)}
-                  disabled={track.stemStatus === 'processing'}
-                  className="rounded border-gray-600 bg-gray-700 text-primary-600 focus:ring-primary-500"
-                />
-              </div>
-
-              {/* Track Info */}
-              <div className="col-span-3">
+        <div className="divide-y divide-gray-700 max-h-96 overflow-y-auto">
+          {jobs.map((job) => (
+            <div key={job.id} className="p-6">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-3">
-                  <FileAudio className="h-4 w-4 text-gray-400" />
+                  <Music className="h-4 w-4 text-purple-400" />
+                  <div className={clsx(
+                    'w-2 h-2 rounded-full',
+                    job.status === 'processing' ? 'bg-blue-400 animate-pulse' :
+                    job.status === 'pending' ? 'bg-yellow-400' :
+                    job.status === 'completed' ? 'bg-green-400' :
+                    job.status === 'error' ? 'bg-red-400' : 'bg-gray-400'
+                  )} />
                   <div>
-                    <div className="font-medium">{track.title}</div>
-                    <div className="text-sm text-gray-400">{track.artist}</div>
+                    <div className="font-medium">{job.trackTitle}</div>
+                    <div className="text-sm text-gray-400">{job.trackArtist}</div>
                   </div>
                 </div>
-              </div>
 
-              {/* Status */}
-              <div className="col-span-2">
-                <div className="flex items-center space-x-2">
-                  <div className={clsx('w-2 h-2 rounded-full', {
-                    'bg-gray-400': track.stemStatus === 'none',
-                    'bg-yellow-400 animate-pulse': track.stemStatus === 'processing',
-                    'bg-green-400': track.stemStatus === 'completed',
-                    'bg-red-400': track.stemStatus === 'error'
-                  })} />
-                  <span className={clsx('text-sm capitalize', getStatusColor(track.stemStatus))}>
-                    {track.stemStatus === 'none' ? 'Not Processed' : track.stemStatus}
-                  </span>
-                </div>
-                {track.processingTime && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    <Clock className="h-3 w-3 inline mr-1" />
-                    {formatProcessingTime(track.processingTime)}
+                <div className="flex items-center space-x-3">
+                  <div className={clsx('text-sm font-medium', {
+                    'text-blue-400': job.status === 'processing',
+                    'text-yellow-400': job.status === 'pending',
+                    'text-green-400': job.status === 'completed',
+                    'text-red-400': job.status === 'error',
+                    'text-gray-400': job.status === 'cancelled'
+                  })}>
+                    {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
                   </div>
-                )}
-              </div>
-
-              {/* Progress */}
-              <div className="col-span-2">
-                {track.stemStatus === 'processing' && track.stemProgress !== undefined ? (
-                  <div className="space-y-1">
-                    <div className="w-full bg-gray-700 rounded-full h-2">
-                      <div
-                        className="bg-primary-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${track.stemProgress}%` }}
-                      />
+                  {job.processingTimeMs && (
+                    <div className="text-xs text-gray-500">
+                      {Math.round(job.processingTimeMs / 1000)}s
                     </div>
-                    <div className="text-xs text-gray-400">{track.stemProgress}%</div>
-                  </div>
-                ) : track.stemStatus === 'completed' ? (
-                  <div className="text-sm text-green-400">✓ Complete</div>
-                ) : track.stemStatus === 'error' ? (
-                  <div className="text-sm text-red-400">
-                    <AlertCircle className="h-3 w-3 inline mr-1" />
-                    Failed
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500">-</div>
-                )}
-              </div>
-
-              {/* Stems */}
-              <div className="col-span-2">
-                {track.stems ? (
-                  <div className="flex space-x-1">
-                    {Object.entries(track.stems).map(([type, _path]) => (
-                      <button
-                        key={type}
-                        onClick={() => handlePlayStem(track.id, type)}
-                        className={clsx(
-                          'p-1 rounded text-xs transition-colors',
-                          playingStems[track.id] === type
-                            ? 'bg-primary-600 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                        )}
-                        title={`Play ${type}`}
-                      >
-                        {playingStems[track.id] === type ? (
-                          <Pause className="h-3 w-3" />
-                        ) : (
-                          stemIcons[type as keyof typeof stemIcons] || <Play className="h-3 w-3" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500">-</div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="col-span-2">
-                <div className="flex space-x-2">
-                  {track.stemStatus === 'completed' && (
-                    <>
-                      <button
-                        onClick={() => handleDownloadStems(track.id)}
-                        className="p-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
-                        title="Download stems"
-                      >
-                        <Download className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteStems(track.id)}
-                        className="p-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors"
-                        title="Delete stems"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </>
-                  )}
-                  {track.stemStatus === 'error' && (
-                    <button
-                      onClick={() => toggleTrackSelection(track.id)}
-                      className="p-1 bg-yellow-600 hover:bg-yellow-700 rounded text-white transition-colors"
-                      title="Retry processing"
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                    </button>
                   )}
                 </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mb-3">
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Progress</span>
+                  <span>{job.progress}%</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className={clsx(
+                      'h-2 rounded-full transition-all duration-300',
+                      job.status === 'error' ? 'bg-red-600' :
+                      job.status === 'completed' ? 'bg-green-600' :
+                      job.status === 'cancelled' ? 'bg-orange-600' :
+                      'bg-blue-600'
+                    )}
+                    style={{ width: `${job.progress}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {job.errorMessage && (
+                <div className="bg-red-900/20 border border-red-700 rounded-lg p-3 mb-3">
+                  <div className="text-sm text-red-300">{job.errorMessage}</div>
+                </div>
+              )}
+
+              {/* Model Settings */}
+              <div className="bg-gray-900 rounded-lg p-3 mb-3">
+                <div className="text-xs text-gray-400 mb-2">Settings:</div>
+                <div className="text-xs text-gray-300 font-mono">
+                  Model: {job.settings.model} | Format: {job.settings.outputFormat} | Quality: {job.settings.quality}
+                </div>
+              </div>
+
+              {/* Results */}
+              {job.results && (
+                <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+                  <div className="text-xs text-green-400 mb-2">Stem Files:</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {job.results.vocalsPath && (
+                      <div className="text-green-300">Vocals: ✓</div>
+                    )}
+                    {job.results.drumsPath && (
+                      <div className="text-green-300">Drums: ✓</div>
+                    )}
+                    {job.results.bassPath && (
+                      <div className="text-green-300">Bass: ✓</div>
+                    )}
+                    {job.results.otherPath && (
+                      <div className="text-green-300">Other: ✓</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Timing Information */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 text-xs text-gray-400 mt-3">
+                <div>Added: {new Date(job.addedAt).toLocaleTimeString()}</div>
+                {job.startedAt && (
+                  <div>Started: {new Date(job.startedAt).toLocaleTimeString()}</div>
+                )}
+                {job.completedAt && (
+                  <div>Completed: {new Date(job.completedAt).toLocaleTimeString()}</div>
+                )}
               </div>
             </div>
           ))}
         </div>
 
-        {!loading && tracks.length === 0 && (
+        {jobs.length === 0 && (
           <div className="text-center py-12 text-gray-400">
-            <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No tracks found</p>
-            <p className="text-sm mt-2">Import some music to get started with STEM separation</p>
+            <Scissors className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No stem separation jobs</p>
+            <p className="text-sm mt-2">Click "Add Tracks" to select tracks for stem separation</p>
           </div>
         )}
       </div>
 
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">STEM Separation Settings</h2>
+      {/* Track Selection Dialog */}
+      {showTrackSelection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <h3 className="text-xl font-bold">Select Tracks for Stem Separation</h3>
               <button
-                onClick={() => setShowSettings(false)}
+                onClick={() => setShowTrackSelection(false)}
                 className="text-gray-400 hover:text-white transition-colors"
               >
-                ×
+                <X className="h-6 w-6" />
               </button>
             </div>
 
-            <div className="space-y-6">
-              {/* Model Selection */}
-              <div>
-                <h3 className="font-medium mb-4">AI Model</h3>
-                <div className="space-y-3">
-                  {stemModels.map((model) => (
-                    <div
-                      key={model.id}
-                      onClick={() => setSettings(prev => prev ? ({ ...prev, model: model.id as any }) : null)}
-                      className={clsx(
-                        'p-4 border rounded-lg cursor-pointer transition-colors',
-                        settings?.model === model.id
-                          ? 'border-primary-500 bg-primary-900/20'
-                          : 'border-gray-600 hover:border-gray-500'
-                      )}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{model.name}</h4>
-                          <p className="text-sm text-gray-400 mt-1">{model.description}</p>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {model.stems.map((stem, index) => (
-                              <span
-                                key={index}
-                                className="px-2 py-1 bg-gray-700 text-xs rounded"
-                              >
-                                {stem}
-                              </span>
-                            ))}
+            <div className="flex-1 p-6 overflow-hidden">
+              {loadingTracks ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
+                  <span className="ml-3 text-gray-300">Loading tracks...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-gray-300">
+                      {availableTracks.length} tracks available • {selectedTracks.size} selected
+                    </p>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setSelectedTracks(new Set(availableTracks.map(t => t.id)))}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        onClick={() => setSelectedTracks(new Set())}
+                        className="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm transition-colors"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-900 rounded-lg max-h-96 overflow-y-auto">
+                    {availableTracks.map((track) => (
+                      <div
+                        key={track.id}
+                        onClick={() => handleTrackSelection(track.id)}
+                        className={clsx(
+                          'p-4 border-b border-gray-700 cursor-pointer transition-colors hover:bg-gray-700',
+                          selectedTracks.has(track.id) ? 'bg-blue-900/30 border-blue-600' : ''
+                        )}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={clsx(
+                            'w-4 h-4 rounded border-2 flex items-center justify-center',
+                            selectedTracks.has(track.id)
+                              ? 'bg-blue-600 border-blue-600'
+                              : 'border-gray-500'
+                          )}>
+                            {selectedTracks.has(track.id) && (
+                              <div className="w-2 h-2 bg-white rounded-sm" />
+                            )}
                           </div>
-                        </div>
-                        <div className="text-right text-sm">
-                          <div className="text-gray-400">Speed: {model.speed}</div>
-                          <div className="text-gray-400">Quality: {model.quality}</div>
+                          <FileAudio className="h-4 w-4 text-purple-400" />
+                          <div className="flex-1">
+                            <div className="font-medium">{track.title}</div>
+                            <div className="text-sm text-gray-400">
+                              {track.artist} {track.album && `• ${track.album}`}
+                            </div>
+                          </div>
+                          {track.duration && (
+                            <div className="text-sm text-gray-500">
+                              {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                    ))}
 
-              {/* Output Settings */}
-              <div>
-                <h3 className="font-medium mb-4">Output Settings</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Format</label>
-                    <select
-                      value={settings?.outputFormat}
-                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, outputFormat: e.target.value as any }) : null)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
-                    >
-                      <option value="wav">WAV (Lossless)</option>
-                      <option value="flac">FLAC (Compressed Lossless)</option>
-                      <option value="mp3">MP3 (Lossy)</option>
-                    </select>
+                    {availableTracks.length === 0 && (
+                      <div className="text-center py-12 text-gray-400">
+                        <FileAudio className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No tracks found in library</p>
+                        <p className="text-sm mt-2">Add music to your library first</p>
+                      </div>
+                    )}
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Quality</label>
-                    <select
-                      value={settings?.quality}
-                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, quality: e.target.value as any }) : null)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
-                    >
-                      <option value="standard">Standard (Faster)</option>
-                      <option value="high">High Quality</option>
-                      <option value="ultra">Ultra Quality (Slower)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {settings?.outputFormat === 'mp3' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium mb-2">Bitrate (kbps)</label>
-                    <select
-                      value={settings?.outputBitrate}
-                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, outputBitrate: parseInt(e.target.value) }) : null)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
-                    >
-                      <option value={128}>128 kbps</option>
-                      <option value={192}>192 kbps</option>
-                      <option value={256}>256 kbps</option>
-                      <option value={320}>320 kbps</option>
-                    </select>
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={settings?.autoNormalize}
-                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, autoNormalize: e.target.checked }) : null)}
-                      className="rounded border-gray-600 bg-gray-700 text-primary-600"
-                    />
-                    <span className="text-sm">Auto-normalize output levels</span>
-                  </label>
-                </div>
-              </div>
+                </>
+              )}
             </div>
 
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowSettings(false)}
-                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded-md text-sm font-medium transition-colors"
-              >
-                Save Settings
-              </button>
+            <div className="flex items-center justify-between p-6 border-t border-gray-700">
+              <div className="text-sm text-gray-400">
+                {selectedTracks.size > 0 && `${selectedTracks.size} track${selectedTracks.size === 1 ? '' : 's'} selected`}
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowTrackSelection(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitTracks}
+                  disabled={selectedTracks.size === 0}
+                  className={clsx(
+                    'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                    selectedTracks.size > 0
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  )}
+                >
+                  Add to Queue ({selectedTracks.size})
+                </button>
+              </div>
             </div>
           </div>
         </div>

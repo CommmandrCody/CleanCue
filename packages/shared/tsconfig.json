@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowJs": true,
@@ -15,8 +15,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "removeComments": false,
-    "isolatedModules": false,
-    "composite": true
+    "isolatedModules": false
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"]

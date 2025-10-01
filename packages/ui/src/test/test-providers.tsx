@@ -1,16 +1,13 @@
 import React from 'react'
 import { vi } from 'vitest'
-import { YouTubeDownloadProvider } from '../contexts/YouTubeDownloadContext'
 import { StemSeparationProvider } from '../contexts/StemSeparationContext'
 
 // 🎧 COMPREHENSIVE TEST PROVIDER WRAPPER - Iron-Clad Testing Support
 export function TestProviders({ children }: { children: React.ReactNode }) {
   return (
-    <YouTubeDownloadProvider>
-      <StemSeparationProvider>
-        {children}
-      </StemSeparationProvider>
-    </YouTubeDownloadProvider>
+    <StemSeparationProvider>
+      {children}
+    </StemSeparationProvider>
   )
 }
 
@@ -25,30 +22,6 @@ export function renderWithProviders(ui: React.ReactElement, options = {}) {
 }
 
 // Mock providers for isolated testing
-export function MockYouTubeProvider({ children }: { children: React.ReactNode }) {
-  const mockContextValue = {
-    downloads: [],
-    addDownload: vi.fn(),
-    updateDownload: vi.fn(),
-    removeDownload: vi.fn(),
-    pauseDownload: vi.fn(),
-    resumeDownload: vi.fn(),
-    cancelDownload: vi.fn(),
-    retryDownload: vi.fn(),
-    clearCompleted: vi.fn(),
-    getActiveDownloads: vi.fn(() => []),
-    getTotalProgress: vi.fn(() => 0)
-  }
-
-  const MockContext = React.createContext(mockContextValue)
-
-  return (
-    <MockContext.Provider value={mockContextValue}>
-      {children}
-    </MockContext.Provider>
-  )
-}
-
 export function MockStemProvider({ children }: { children: React.ReactNode }) {
   const mockContextValue = {
     jobs: [],

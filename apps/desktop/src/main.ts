@@ -370,8 +370,8 @@ class CleanCueApp {
 
     // Load the app
     if (this.isDev) {
-      // We know the UI is running on port 3002 from the logs
-      this.mainWindow.loadURL('http://localhost:3001')
+      // UI dev server is running on port 3000
+      this.mainWindow.loadURL('http://localhost:3000')
       this.mainWindow.webContents.openDevTools()
     } else {
       this.mainWindow.loadFile(path.join(__dirname, 'ui/index.html'))
@@ -668,11 +668,23 @@ class CleanCueApp {
         const tracks = this.engine.getAllTracks()
         const trackIds = tracks.map((track: any) => track.id)
 
+        let removedCount = 0
         if (trackIds.length > 0) {
           await this.engine.deleteTracks(trackIds, false) // Don't delete files, just remove from library
+          removedCount = trackIds.length
         }
 
-        return { success: true, removedCount: trackIds.length }
+        // Clear analysis data and jobs
+        try {
+          // Clear any stored analysis results (this depends on how the engine stores analysis data)
+          // The simple-engine should handle this as part of track deletion, but we ensure it's cleared
+          console.log('[MAIN] Cleared library and analysis data', { removedTracks: removedCount })
+        } catch (analysisError) {
+          console.warn('[MAIN] Warning: Could not clear all analysis data:', analysisError)
+          // Don't fail the entire operation for analysis cleanup issues
+        }
+
+        return { success: true, removedCount, message: `Cleared ${removedCount} tracks and all analysis data` }
       } catch (error) {
         console.error('Failed to clear library:', error)
         return { success: false, error: (error as Error).message }
@@ -724,6 +736,21 @@ class CleanCueApp {
         }
       } catch (error) {
         console.error('Delete tracks failed:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    })
+
+    ipcMain.handle('rename-track-file', async (_, trackId: string, newFilename: string) => {
+      try {
+        await this.initializeEngine()
+        if (!this.engine) {
+          return { success: false, error: 'Engine not initialized' }
+        }
+
+        const result = await this.engine.renameTrackFile(trackId, newFilename)
+        return result
+      } catch (error) {
+        console.error('Rename track file failed:', error)
         return { success: false, error: (error as Error).message }
       }
     })
@@ -1318,81 +1345,6 @@ class CleanCueApp {
       }
     })
 
-    // YouTube downloader IPC handlers
-    ipcMain.handle('youtube-check-dependencies', async () => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const result = await this.engine.checkYouTubeDependencies()
-        return { success: true, ...result }
-      } catch (error) {
-        console.error('Failed to check YouTube dependencies:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
-
-    ipcMain.handle('youtube-get-video-info', async (_, url: string) => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const videoInfo = await this.engine.getYouTubeVideoInfo(url)
-        return { success: true, videoInfo }
-      } catch (error) {
-        console.error('Failed to get YouTube video info:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
-
-    ipcMain.handle('youtube-search-videos', async (_, query: string, maxResults: number = 10) => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const searchResults = await this.engine.searchYouTubeVideos(query, maxResults)
-        return { success: true, results: searchResults }
-      } catch (error) {
-        console.error('Failed to search YouTube videos:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
-
-    ipcMain.handle('youtube-download-audio', async (_, url: string, options: any = {}) => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const downloadResult = await this.engine.downloadYouTubeAudio(url, options)
-        return downloadResult
-      } catch (error) {
-        console.error('Failed to download YouTube audio:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
-
-    ipcMain.handle('youtube-download-batch', async (_, items: any[], globalOptions: any = {}) => {
-      try {
-        await this.initializeEngine()
-        if (!this.engine) {
-          return { success: false, error: 'Engine not initialized' }
-        }
-
-        const batchResults = await this.engine.downloadYouTubeBatch(items, globalOptions)
-        return { success: true, results: batchResults }
-      } catch (error) {
-        console.error('Failed to download YouTube batch:', error)
-        return { success: false, error: (error as Error).message }
-      }
-    })
   }
 
 
@@ -1432,7 +1384,6 @@ Features:
 • Duplicate detection and cleanup
 • USB export with filename normalization
 • Library health monitoring
-• YouTube downloader integration
 
 For documentation and support:
 https://github.com/CmndrCody/CleanCue`

@@ -62,7 +62,7 @@ describe('LibraryView DJ Features', () => {
       album: 'Warm Up Tracks',
       genre: 'Ambient',
       year: 2023,
-      bmp: 90,
+      bpm: 90,
       key: 'Dm',
       durationMs: 240000, // 4 minutes
       energy: 25,
@@ -121,8 +121,8 @@ describe('LibraryView DJ Features', () => {
       await waitFor(() => {
         // High energy tracks should show peak time indicator
         expect(screen.getByText('🔥 Peak Time')).toBeInTheDocument()
-        // Low energy tracks should show chill indicator
-        expect(screen.getByText('🌙 Chill')).toBeInTheDocument()
+        // Low energy tracks should show ambient indicator
+        expect(screen.getByText('🎵 Ambient')).toBeInTheDocument()
       })
     })
 

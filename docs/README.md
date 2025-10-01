@@ -1,73 +1,37 @@
-# CleanCue Documentation
+CleanCue v0.2.4 Release Notes
+🆕 Overview
 
-## 🎧 Professional DJ Library Management
+This release focuses on simplifying the CleanCue architecture while preserving all essential DJ functionality. By removing unnecessary complexity, the system is now leaner, easier to maintain, and more developer-friendly, without compromising on features.
 
-**Built by DJs, for DJs. Simplified, powerful, and reliable.**
+🔄 Key Changes
 
----
+Removed 1.1GB workers package
+Eliminated the bulky workers dependency. Replaced with lightweight direct integrations to reduce footprint and improve performance.
 
-## 📚 Documentation Index
+Adopted JSON-based storage
+Transitioned from a traditional database to a simple, JSON-based storage engine. This reduces overhead and simplifies both setup and maintenance.
 
-### 🚀 Getting Started
-- **[Main README](../README.md)** - Complete feature overview and installation
-- **[CLAUDE.md](../CLAUDE.md)** - Development guide and commands
+Direct tool integration
+Integrated core tools (yt-dlp, librosa, etc.) directly, removing redundant abstraction layers. This makes the system easier to debug and extend yet highly-configurabale.
 
-### 🖥️ Desktop Application
-- **[Complete UI Guide](./UI_GUIDE.md)** - Comprehensive desktop interface documentation
-- **Modern Electron-React UI** with professional DJ workflow features
-- **Audio Player Integration** with waveform display, cue points, and preview
-- **YouTube Downloader** with high-quality audio extraction and library integration
-- **STEM Separation** with AI-powered vocal/instrumental isolation
-- **Smart DJ Features** with harmonic mixing and BPM compatibility analysis
+Improved modular testing
+Enhanced test coverage with a focus on modular validation of individual components. This ensures stability and simplifies future development.
 
-### ⌨️ Command Line Interface
-- **[Complete CLI Reference](./CLI_REFERENCE.md)** - Full command documentation and examples
-- **Iron-clad modular CLI** for shell automation and large-scale operations
-- **Comprehensive test coverage** (36 passing tests)
-- **Standalone operation** decoupled from UI for maximum flexibility
-- **Professional automation** with scripting examples and integration guides
+Preserved full DJ feature set
+Despite simplification, all core DJ features remain intact, including BPM detection, key analysis, energy scoring, **cue points**, and audio integration.
 
-### 🔧 Architecture
-- **Simplified Engine** - JSON-based storage replacing complex database system
-- **Modular Design** - CLI and UI components can operate independently
-- **YouTube Integration** - Direct yt-dlp integration without complex workers
-- **DJ Features** - BPM, Key, Energy, and Cue Points in lightweight system
+**Cue points are experimental in this release 
 
-### 📊 Technical Details
-- **TypeScript ES Modules** throughout
-- **Electron Desktop App** with React UI
-- **pnpm Workspaces** monorepo structure
-- **Comprehensive Testing** with Jest and Vitest
-- **Automated CI/CD** pipeline with health checks
+⚡ Developer Impact
 
----
+Faster builds and reduced system complexity
 
-## Quick Start
+Easier debugging with direct tool usage
 
-```bash
-# Install dependencies
-pnpm install
+Lighter install size and dependency tree
 
-# Build everything
-pnpm run build
+Improved CI/CD validation through modular tests
 
-# Run desktop app in development
-pnpm run dev
+✅ Outcome
 
-# Run CLI tests
-pnpm --filter @cleancue/cli run test
-
-# Full CI pipeline
-pnpm run ci
-```
-
-## Core Philosophy
-
-CleanCue v0.2.4 represents a return to simplicity:
-- **Removed 1.1GB workers package** in favor of lightweight solutions
-- **JSON storage** instead of complex database systems
-- **Direct tool integration** (yt-dlp) instead of abstraction layers
-- **Modular testing** enabling easy validation of individual components
-- **Preserved full DJ functionality** while drastically reducing complexity
-
-The result is a system that's easier to understand, test, and maintain while delivering all the professional DJ features you need.
+CleanCue v0.2.4 represents a return to simplicity. The platform is now more maintainable, transparent, and developer-friendly, while continuing to deliver the complete set of professional DJ library management features.

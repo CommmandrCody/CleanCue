@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, RotateCcw, BarChart3, Key, RefreshCw, Shuffle } from 'lucide-react'
+import { Play, Pause, RotateCcw, BarChart3, Key, RefreshCw, Shuffle, Activity, Grid3X3, Target, Settings } from 'lucide-react'
 import clsx from 'clsx'
+import { JobManagement } from './JobManagement'
+// import { useStemSeparation } from '../contexts/StemSeparationContext' // Disabled: not implemented in simple engine
 
 interface AnalysisJob {
   id: string
@@ -43,8 +45,65 @@ interface KeyMixSuggestion {
   }[]
 }
 
+interface GridCalculationJob {
+  id: string
+  trackId: string
+  trackTitle: string
+  trackArtist: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number
+  currentPhase?: string
+  results?: {
+    beatGrid?: {
+      bpm: number
+      firstBeat: number
+      confidence: number
+      gridPoints: { time: number; beat: number }[]
+    }
+    downbeats?: { time: number; confidence: number }[]
+    phrases?: { start: number; end: number; type: string }[]
+  }
+  errorMessage?: string
+  startedAt?: number
+  completedAt?: number
+}
+
+interface HotCue {
+  id: string
+  name: string
+  position: number // in seconds
+  type: 'cue' | 'loop' | 'hot' | 'memory'
+  color?: string
+  loopLength?: number
+}
+
+interface HotCueJob {
+  id: string
+  trackId: string
+  trackTitle: string
+  trackArtist: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  progress: number
+  type: 'auto-detect' | 'manual-set' | 'export'
+  results?: {
+    hotCues: HotCue[]
+    autoDetectedCues?: {
+      intro: number
+      outro: number
+      drops: number[]
+      breaks: number[]
+    }
+  }
+  errorMessage?: string
+  startedAt?: number
+  completedAt?: number
+}
+
 export function AnalysisProgress() {
+  const [activeTab, setActiveTab] = useState<'analysis' | 'grid' | 'jobs'>('analysis')
   const [jobs, setJobs] = useState<AnalysisJob[]>([])
+  const [gridJobs, setGridJobs] = useState<GridCalculationJob[]>([])
+  const [hotCueJobs, setHotCueJobs] = useState<HotCueJob[]>([])
   const [isRunning, setIsRunning] = useState(true)
   const [progressLog, setProgressLog] = useState<ProgressLogEntry[]>([])
   const [mixSuggestions, setMixSuggestions] = useState<KeyMixSuggestion[]>([])
@@ -52,6 +111,7 @@ export function AnalysisProgress() {
   const [showLiveLog, setShowLiveLog] = useState(true)
   const [showMixSuggestions, setShowMixSuggestions] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  // const stemSeparation = useStemSeparation() // Disabled: not implemented in simple engine
 
   // Calculate stats from actual jobs - but show track-level thinking
   const stats = {
@@ -279,78 +339,21 @@ export function AnalysisProgress() {
   }
 
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Audio Analysis</h2>
-          <p className="text-gray-400">Processing tracks for BPM, key, and energy detection</p>
-        </div>
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'analysis':
+        return renderAnalysisContent()
+      case 'grid':
+        return renderGridHotCueContent()
+      case 'jobs':
+        return <JobManagement />
+      default:
+        return renderAnalysisContent()
+    }
+  }
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowLiveLog(!showLiveLog)}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              showLiveLog ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'
-            )}
-          >
-            <BarChart3 className="h-4 w-4 inline mr-2" />
-            {showLiveLog ? 'Hide Log' : 'Show Log'}
-          </button>
-
-          <button
-            onClick={() => setShowMixSuggestions(!showMixSuggestions)}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              showMixSuggestions ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
-            )}
-          >
-            <Shuffle className="h-4 w-4 inline mr-2" />
-            {showMixSuggestions ? 'Hide Mixes' : 'Show Mixes'}
-          </button>
-
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
-          >
-            <RefreshCw className={clsx('h-4 w-4 inline mr-2', isRefreshing && 'animate-spin')} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh Status'}
-          </button>
-
-          <button
-            onClick={handleRestartFailed}
-            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-md text-sm font-medium transition-colors"
-          >
-            <RotateCcw className="h-4 w-4 inline mr-2" />
-            Retry Failed
-          </button>
-
-          <button
-            onClick={handleToggleAnalysis}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              isRunning
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-green-600 hover:bg-green-700'
-            )}
-          >
-            {isRunning ? (
-              <>
-                <Pause className="h-4 w-4 inline mr-2" />
-                Pause Analysis
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 inline mr-2" />
-                Resume Analysis
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
+  const renderAnalysisContent = () => (
+    <>
       {/* Simple Progress Overview */}
       {stats.total > 0 && (
         <div className="bg-gray-800 rounded-lg p-4">
@@ -636,6 +639,480 @@ export function AnalysisProgress() {
           </div>
         </div>
       )}
+    </>
+  )
+
+
+  const renderGridHotCueContent = () => {
+    const activeGridJobs = gridJobs.filter(job => job.status === 'running')
+    const pendingGridJobs = gridJobs.filter(job => job.status === 'pending')
+    const completedGridJobs = gridJobs.filter(job => job.status === 'completed')
+    const failedGridJobs = gridJobs.filter(job => job.status === 'failed')
+
+    const activeHotCueJobs = hotCueJobs.filter(job => job.status === 'running')
+    const pendingHotCueJobs = hotCueJobs.filter(job => job.status === 'pending')
+    const completedHotCueJobs = hotCueJobs.filter(job => job.status === 'completed')
+    const failedHotCueJobs = hotCueJobs.filter(job => job.status === 'failed')
+
+    return (
+      <>
+        {/* Grid & HotCue Stats */}
+        <div className="grid grid-cols-2 gap-6">
+          {/* Grid Calculation Stats */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center">
+              <Grid3X3 className="h-5 w-5 mr-2 text-blue-400" />
+              Beat Grid Calculation
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-blue-400">{activeGridJobs.length}</div>
+                <div className="text-xs text-gray-400">Processing</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-yellow-400">{pendingGridJobs.length}</div>
+                <div className="text-xs text-gray-400">Pending</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-green-400">{completedGridJobs.length}</div>
+                <div className="text-xs text-gray-400">Completed</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-red-400">{failedGridJobs.length}</div>
+                <div className="text-xs text-gray-400">Failed</div>
+              </div>
+            </div>
+          </div>
+
+          {/* HotCue Management Stats */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center">
+              <Target className="h-5 w-5 mr-2 text-purple-400" />
+              HotCue Management
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-blue-400">{activeHotCueJobs.length}</div>
+                <div className="text-xs text-gray-400">Processing</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-yellow-400">{pendingHotCueJobs.length}</div>
+                <div className="text-xs text-gray-400">Pending</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-green-400">{completedHotCueJobs.length}</div>
+                <div className="text-xs text-gray-400">Completed</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3">
+                <div className="text-xl font-bold text-red-400">{failedHotCueJobs.length}</div>
+                <div className="text-xs text-gray-400">Failed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Grid Calculation Queue */}
+        <div className="bg-gray-800 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-gray-700 border-b border-gray-600">
+            <h3 className="font-medium flex items-center">
+              <Grid3X3 className="h-4 w-4 mr-2 text-blue-400" />
+              Beat Grid Calculation Queue ({gridJobs.length} jobs)
+            </h3>
+          </div>
+
+          <div className="divide-y divide-gray-700 max-h-64 overflow-y-auto">
+            {gridJobs.map((job) => (
+              <div key={job.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <Grid3X3 className="h-4 w-4 text-blue-400" />
+                    <div className={clsx(
+                      'w-2 h-2 rounded-full',
+                      job.status === 'running' ? 'bg-blue-400 animate-pulse' :
+                      job.status === 'pending' ? 'bg-yellow-400' :
+                      job.status === 'completed' ? 'bg-green-400' :
+                      'bg-red-400'
+                    )} />
+                    <div>
+                      <div className="font-medium">{job.trackTitle}</div>
+                      <div className="text-sm text-gray-400">{job.trackArtist}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className={clsx('text-sm font-medium', {
+                      'text-blue-400': job.status === 'running',
+                      'text-yellow-400': job.status === 'pending',
+                      'text-green-400': job.status === 'completed',
+                      'text-red-400': job.status === 'failed'
+                    })}>
+                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                    </div>
+                    {job.completedAt && job.startedAt && (
+                      <div className="text-xs text-gray-500">
+                        {Math.round((job.completedAt - job.startedAt) / 1000)}s
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>{job.currentPhase || 'Progress'}</span>
+                    <span>{job.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className={clsx(
+                        'h-2 rounded-full transition-all duration-300',
+                        job.status === 'failed' ? 'bg-red-600' :
+                        job.status === 'completed' ? 'bg-green-600' :
+                        'bg-blue-600'
+                      )}
+                      style={{ width: `${job.progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {job.errorMessage && (
+                  <div className="bg-red-900/20 border border-red-700 rounded-lg p-3 mb-3">
+                    <div className="text-sm text-red-300">{job.errorMessage}</div>
+                  </div>
+                )}
+
+                {/* Results */}
+                {job.results && (
+                  <div className="bg-green-900/20 border border-green-700 rounded-lg p-3">
+                    <div className="text-xs text-green-400 mb-2">Grid Results:</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {job.results.beatGrid && (
+                        <>
+                          <div className="text-green-300">BPM: {job.results.beatGrid.bpm}</div>
+                          <div className="text-green-300">Confidence: {Math.round(job.results.beatGrid.confidence * 100)}%</div>
+                          <div className="text-green-300">Grid Points: {job.results.beatGrid.gridPoints.length}</div>
+                          <div className="text-green-300">First Beat: {job.results.beatGrid.firstBeat.toFixed(2)}s</div>
+                        </>
+                      )}
+                      {job.results.downbeats && (
+                        <div className="text-green-300">Downbeats: {job.results.downbeats.length}</div>
+                      )}
+                      {job.results.phrases && (
+                        <div className="text-green-300">Phrases: {job.results.phrases.length}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {gridJobs.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <Grid3X3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No grid calculation jobs</p>
+              <p className="text-xs mt-1">Start beat grid analysis for precise track timing</p>
+            </div>
+          )}
+        </div>
+
+        {/* HotCue Management Queue */}
+        <div className="bg-gray-800 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-gray-700 border-b border-gray-600">
+            <h3 className="font-medium flex items-center">
+              <Target className="h-4 w-4 mr-2 text-purple-400" />
+              HotCue Management Queue ({hotCueJobs.length} jobs)
+            </h3>
+          </div>
+
+          <div className="divide-y divide-gray-700 max-h-64 overflow-y-auto">
+            {hotCueJobs.map((job) => (
+              <div key={job.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <Target className="h-4 w-4 text-purple-400" />
+                    <div className={clsx(
+                      'w-2 h-2 rounded-full',
+                      job.status === 'running' ? 'bg-blue-400 animate-pulse' :
+                      job.status === 'pending' ? 'bg-yellow-400' :
+                      job.status === 'completed' ? 'bg-green-400' :
+                      'bg-red-400'
+                    )} />
+                    <div>
+                      <div className="font-medium">{job.trackTitle}</div>
+                      <div className="text-sm text-gray-400">{job.trackArtist} • {job.type}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className={clsx('text-sm font-medium', {
+                      'text-blue-400': job.status === 'running',
+                      'text-yellow-400': job.status === 'pending',
+                      'text-green-400': job.status === 'completed',
+                      'text-red-400': job.status === 'failed'
+                    })}>
+                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                    </div>
+                    {job.completedAt && job.startedAt && (
+                      <div className="text-xs text-gray-500">
+                        {Math.round((job.completedAt - job.startedAt) / 1000)}s
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Progress</span>
+                    <span>{job.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div
+                      className={clsx(
+                        'h-2 rounded-full transition-all duration-300',
+                        job.status === 'failed' ? 'bg-red-600' :
+                        job.status === 'completed' ? 'bg-green-600' :
+                        'bg-purple-600'
+                      )}
+                      style={{ width: `${job.progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {job.errorMessage && (
+                  <div className="bg-red-900/20 border border-red-700 rounded-lg p-3 mb-3">
+                    <div className="text-sm text-red-300">{job.errorMessage}</div>
+                  </div>
+                )}
+
+                {/* Results */}
+                {job.results && (
+                  <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-3">
+                    <div className="text-xs text-purple-400 mb-2">HotCue Results:</div>
+                    <div className="space-y-2">
+                      {job.results.hotCues.length > 0 && (
+                        <div className="text-xs text-purple-300">
+                          HotCues: {job.results.hotCues.length} set
+                        </div>
+                      )}
+                      {job.results.autoDetectedCues && (
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="text-purple-300">Intro: {job.results.autoDetectedCues.intro.toFixed(1)}s</div>
+                          <div className="text-purple-300">Outro: {job.results.autoDetectedCues.outro.toFixed(1)}s</div>
+                          <div className="text-purple-300">Drops: {job.results.autoDetectedCues.drops.length}</div>
+                          <div className="text-purple-300">Breaks: {job.results.autoDetectedCues.breaks.length}</div>
+                        </div>
+                      )}
+                      {job.results.hotCues.slice(0, 4).map((cue, index) => (
+                        <div key={cue.id} className="flex items-center space-x-2 text-xs">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: cue.color || '#8B5CF6' }}
+                          />
+                          <span className="text-purple-300">{cue.name || `Cue ${index + 1}`}</span>
+                          <span className="text-gray-400">{cue.position.toFixed(1)}s</span>
+                          <span className="text-gray-500 text-xs">{cue.type}</span>
+                        </div>
+                      ))}
+                      {job.results.hotCues.length > 4 && (
+                        <div className="text-xs text-gray-500">
+                          +{job.results.hotCues.length - 4} more cues
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {hotCueJobs.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No HotCue jobs</p>
+              <p className="text-xs mt-1">Auto-detect cue points or manage existing cues</p>
+            </div>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Analysis & Processing</h2>
+          <p className="text-gray-400">Track analysis, stem separation, and background jobs</p>
+        </div>
+
+        {/* Tab-specific controls */}
+        {activeTab === 'analysis' && (
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowLiveLog(!showLiveLog)}
+              className={clsx(
+                'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                showLiveLog ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'
+              )}
+            >
+              <BarChart3 className="h-4 w-4 inline mr-2" />
+              {showLiveLog ? 'Hide Log' : 'Show Log'}
+            </button>
+
+            <button
+              onClick={() => setShowMixSuggestions(!showMixSuggestions)}
+              className={clsx(
+                'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                showMixSuggestions ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
+              )}
+            >
+              <Shuffle className="h-4 w-4 inline mr-2" />
+              {showMixSuggestions ? 'Hide Mixes' : 'Show Mixes'}
+            </button>
+
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+            >
+              <RefreshCw className={clsx('h-4 w-4 inline mr-2', isRefreshing && 'animate-spin')} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh Status'}
+            </button>
+
+            <button
+              onClick={handleRestartFailed}
+              className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-md text-sm font-medium transition-colors"
+            >
+              <RotateCcw className="h-4 w-4 inline mr-2" />
+              Retry Failed
+            </button>
+
+            <button
+              onClick={handleToggleAnalysis}
+              className={clsx(
+                'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                isRunning
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-green-600 hover:bg-green-700'
+              )}
+            >
+              {isRunning ? (
+                <>
+                  <Pause className="h-4 w-4 inline mr-2" />
+                  Pause Analysis
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 inline mr-2" />
+                  Resume Analysis
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+
+        {activeTab === 'grid' && (
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => {
+                // TODO: Start grid calculation for selected tracks
+                console.log('Start grid calculation')
+              }}
+              disabled={gridJobs.filter(job => job.status === 'pending').length === 0}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+            >
+              <Grid3X3 className="h-4 w-4 inline mr-2" />
+              Calculate Grids ({gridJobs.filter(job => job.status === 'pending').length})
+            </button>
+
+            <button
+              onClick={() => {
+                // TODO: Auto-detect hotcues for selected tracks
+                console.log('Auto-detect hotcues')
+              }}
+              disabled={hotCueJobs.filter(job => job.status === 'pending').length === 0}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+            >
+              <Target className="h-4 w-4 inline mr-2" />
+              Auto-Detect Cues ({hotCueJobs.filter(job => job.status === 'pending').length})
+            </button>
+
+            <button
+              onClick={() => {
+                // TODO: Clear completed grid/hotcue jobs
+                setGridJobs(prev => prev.filter(job => job.status !== 'completed'))
+                setHotCueJobs(prev => prev.filter(job => job.status !== 'completed'))
+              }}
+              disabled={gridJobs.filter(job => job.status === 'completed').length === 0 && hotCueJobs.filter(job => job.status === 'completed').length === 0}
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+            >
+              <RotateCcw className="h-4 w-4 inline mr-2" />
+              Clear Completed
+            </button>
+
+            <button
+              onClick={() => {
+                // TODO: Open grid/hotcue settings
+                console.log('Open grid/hotcue settings')
+              }}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
+            >
+              <Settings className="h-4 w-4 inline mr-2" />
+              Settings
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-700">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('analysis')}
+            className={clsx(
+              'py-2 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeTab === 'analysis'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <BarChart3 className="h-4 w-4 inline mr-2" />
+            Audio Analysis ({stats.total})
+          </button>
+          <button
+            onClick={() => setActiveTab('grid')}
+            className={clsx(
+              'py-2 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeTab === 'grid'
+                ? 'border-orange-500 text-orange-400'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <Grid3X3 className="h-4 w-4 inline mr-2" />
+            Grid & HotCues ({gridJobs.length + hotCueJobs.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('jobs')}
+            className={clsx(
+              'py-2 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeTab === 'jobs'
+                ? 'border-green-500 text-green-400'
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-300'
+            )}
+          >
+            <Activity className="h-4 w-4 inline mr-2" />
+            Background Jobs
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {renderTabContent()}
     </div>
   )
 }

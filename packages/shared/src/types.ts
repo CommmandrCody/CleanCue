@@ -35,6 +35,32 @@ export interface Track {
   danceability?: number;
   valence?: number;
 
+  // Extended analysis results
+  metadataEnrichment?: {
+    source: 'musicbrainz' | 'musicmatch' | 'filename' | 'fingerprint';
+    confidence: number;
+    enrichedAt: Date;
+    originalMetadata: Record<string, any>;
+  };
+
+  filenameHealth?: {
+    score: number;              // 0-100 health score
+    engineDjCompatible: boolean;
+    issues: string[];           // List of issues found
+    suggestedFilename?: string; // Clean filename suggestion
+    analyzedAt: Date;
+  };
+
+  audioNormalization?: {
+    lufsIntegrated: number;     // Current LUFS level
+    lufsTarget: number;         // Target LUFS level
+    gainAdjustment: number;     // Gain needed to reach target
+    hasClipping: boolean;
+    dynamicRange: number;
+    recommendNormalization: boolean;
+    analyzedAt: Date;
+  };
+
   // Filename intelligence (from enhanced metadata worker)
   filenameConfidence?: number;  // 0-1 confidence in filename parsing
   filenamePattern?: string;     // Detected pattern identifier
@@ -49,6 +75,12 @@ export interface Track {
   djSetType?: 'mix' | 'set' | 'podcast' | 'radio_show' | 'live_set'; // Type of DJ content
   djSetConfidence?: number;    // 0-1 confidence in DJ set detection
   djSetReason?: string;        // Why it was flagged as a DJ set
+
+  // Stem separation metadata
+  stemType?: 'vocals' | 'drums' | 'bass' | 'other' | 'piano' | 'guitar'; // Type of separated stem
+  originalTrackId?: string;    // ID of the original track this stem was derived from
+  stemSeparationId?: string;   // ID of the stem separation job that created this
+  isStem?: boolean;           // Flag to identify this as a separated stem track
 }
 
 // Legacy Analysis interface - deprecated, use Job system instead
@@ -75,6 +107,10 @@ export type JobType =
   | 'file_stage'     // Import single file metadata to database
   | 'batch_analyze'  // Create analysis jobs for multiple tracks
   | 'analyze'        // Analyze single track (key, bpm, structure)
+  | 'metadata_enrich'// Enrich metadata via MusicBrainz/MusicMatch
+  | 'filename_analyze' // Analyze filename health and suggest improvements
+  | 'audio_normalize'// Analyze audio levels and normalization requirements
+  | 'library_export'// Export clean, organized library
   | 'batch_export'   // Create export jobs for multiple tracks
   | 'export'         // Export tracks to format/destination
   | 'cleanup'        // System maintenance jobs
@@ -149,6 +185,41 @@ export interface ExportJobPayload {
   options?: Record<string, any>; // Export options
 }
 
+// Extended Analysis Job Payloads
+export interface MetadataEnrichJobPayload {
+  trackId: string;             // Track to enrich
+  trackPath: string;           // File path for fingerprinting
+  useFingerprinting?: boolean; // Use acoustic fingerprinting if metadata fails
+  fallbackToFilename?: boolean; // Parse filename if no online match
+}
+
+export interface FilenameAnalyzeJobPayload {
+  trackId: string;             // Track to analyze
+  currentFilename: string;     // Current filename
+  metadata?: {                 // Metadata for suggesting clean name
+    artist?: string;
+    title?: string;
+    bpm?: number;
+    key?: string;
+  };
+}
+
+export interface AudioNormalizeJobPayload {
+  trackId: string;             // Track to analyze
+  trackPath: string;           // File path for analysis
+  targetLufs?: number;         // Target LUFS level (-14 for streaming, -16 for DJ)
+  analyzeOnly?: boolean;       // Only analyze, don't suggest modifications
+}
+
+export interface LibraryExportJobPayload {
+  trackIds: string[];          // Tracks to export in clean format
+  exportPath: string;          // Base export directory
+  namingTemplate: string;      // Filename template (e.g., "{artist} - {title} [{bpm}] ({key})")
+  folderStructure: 'flat' | 'genre' | 'artist' | 'genre-artist';
+  applyNormalization?: boolean; // Apply audio normalization during export
+  includeMetadata?: boolean;   // Embed metadata in exported files
+}
+
 // Job result types
 export interface ScanJobResult {
   filesFound: number;
@@ -178,6 +249,80 @@ export interface ExportJobResult {
   errors: string[];
 }
 
+// Extended Analysis Job Results
+export interface MetadataEnrichJobResult {
+  trackId: string;
+  originalMetadata: Record<string, any>;
+  enrichedMetadata: {
+    artist?: string;
+    title?: string;
+    album?: string;
+    genre?: string;
+    year?: number;
+    label?: string;
+    isrc?: string;
+    catalogNumber?: string;
+    artworkUrl?: string;
+  };
+  source: 'musicbrainz' | 'musicmatch' | 'filename' | 'fingerprint';
+  confidence: number;           // 0-1 confidence in the match
+  fingerprintUsed?: boolean;
+  processingTimeMs: number;
+}
+
+export interface FilenameAnalyzeJobResult {
+  trackId: string;
+  currentFilename: string;
+  healthScore: number;          // 0-100 health score
+  issues: {
+    type: 'special_chars' | 'unicode' | 'length' | 'engine_dj_compat' | 'whitespace';
+    severity: 'error' | 'warning' | 'info';
+    description: string;
+    problematicChars?: string[];
+  }[];
+  suggestedFilename: string;    // Clean filename suggestion
+  namingPattern?: string;       // Detected pattern (if any)
+  engineDjCompatible: boolean;
+  processingTimeMs: number;
+}
+
+export interface AudioNormalizeJobResult {
+  trackId: string;
+  lufsIntegrated: number;       // Integrated LUFS measurement
+  lfusMomentary: number;        // Momentary LUFS peak
+  lufsShortTerm: number;        // Short-term LUFS
+  truePeak: number;             // True peak level in dBFS
+  dynamicRange: number;         // LU dynamic range
+  targetLufs: number;           // Target LUFS for normalization
+  gainAdjustment: number;       // Gain adjustment needed (dB)
+  hasClipping: boolean;         // Detected clipping
+  recommendNormalization: boolean;
+  processingTimeMs: number;
+}
+
+export interface LibraryExportJobResult {
+  trackIds: string[];
+  exportPath: string;
+  exportedFiles: {
+    trackId: string;
+    originalPath: string;
+    exportedPath: string;
+    cleanFilename: string;
+    normalizedAudio: boolean;
+    metadataUpdated: boolean;
+  }[];
+  summary: {
+    totalTracks: number;
+    successfulExports: number;
+    normalizedTracks: number;
+    renamedFiles: number;
+    totalSizeMb: number;
+  };
+  manifest: string;             // Path to import manifest file
+  errors: string[];
+  processingTimeMs: number;
+}
+
 export interface CuePoint {
   id: string;
   trackId: string;
@@ -187,6 +332,59 @@ export interface CuePoint {
   confidence: number;
   createdAt: Date;
 }
+
+// ============================================================================
+// TRACK NAMING SPECIFICATION
+// ============================================================================
+
+export const TRACK_NAMING = {
+  // Default template for clean filenames
+  DEFAULT_TEMPLATE: '{artist} - {title} [{bpm}] ({key}) [CLEAN]',
+
+  // Alternative templates
+  TEMPLATES: {
+    BASIC: '{artist} - {title}',
+    WITH_BPM: '{artist} - {title} [{bpm}]',
+    WITH_KEY: '{artist} - {title} ({key})',
+    FULL_DJ: '{artist} - {title} [{bpm}] ({key})',
+    CLEAN_DJ: '{artist} - {title} [{bpm}] ({key}) [CLEAN]',
+    REMIXER: '{artist} - {title} ({remixer} Remix) [{bpm}] ({key})',
+  },
+
+  // Characters that cause issues in DJ software
+  PROBLEMATIC_CHARS: {
+    WINDOWS_PROHIBITED: ['<', '>', ':', '"', '|', '?', '*', '\\'],
+    ENGINE_DJ_ISSUES: ['{', '}', '#', '%', '&'],  // Note: [] brackets are SAFE and standard DJ notation
+    UNICODE_ISSUES: ['…', '–', '—', '\u2018', '\u2019', '\u201C', '\u201D'],
+    WHITESPACE_ISSUES: ['\t', '\n', '\r'],
+  },
+
+  // Maximum safe filename length (accounting for full path)
+  MAX_FILENAME_LENGTH: 200,
+  MAX_PATH_LENGTH: 255,
+
+  // Folder organization patterns
+  FOLDER_STRUCTURES: {
+    FLAT: 'flat',                    // All files in root
+    GENRE: 'genre',                  // /Electronic/House/
+    ARTIST: 'artist',                // /Artist Name/
+    GENRE_ARTIST: 'genre-artist',    // /Electronic/House/Artist Name/
+    YEAR_GENRE: 'year-genre',        // /2023/Electronic/House/
+    LABEL: 'label',                  // /Label Name/
+  },
+
+  // Audio normalization targets
+  LUFS_TARGETS: {
+    STREAMING: -14,      // Spotify, Apple Music standard
+    DJ_PERFORMANCE: -16, // Optimal for DJ mixing
+    BROADCAST: -23,      // Broadcast standard
+    MASTERING: -11,      // Loud mastering
+  },
+
+  // File extensions we support
+  SUPPORTED_EXTENSIONS: ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg'],
+
+} as const;
 
 export interface Playlist {
   id: string;
@@ -352,11 +550,6 @@ export interface CleanCueEventMap {
   'health:scan:started': {};
   'health:scan:completed': { issues: HealthIssue[] };
   'health:scan:failed': { error: string };
-  'youtube:download:completed': any;
-  'youtube:download:failed': any;
-  'youtube:batch:started': any;
-  'youtube:batch:progress': any;
-  'youtube:batch:completed': any;
 }
 
 export type CleanCueEvent = {

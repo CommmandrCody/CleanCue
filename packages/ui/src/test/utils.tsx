@@ -1,7 +1,6 @@
 import { render, RenderOptions } from '@testing-library/react'
 import { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { YouTubeDownloadProvider } from '../contexts/YouTubeDownloadContext'
 import { StemSeparationProvider } from '../contexts/StemSeparationContext'
 import { setupElectronAPIMock } from './mocks/electronAPI'
 
@@ -20,11 +19,9 @@ const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <YouTubeDownloadProvider>
-        <StemSeparationProvider>
-          {children}
-        </StemSeparationProvider>
-      </YouTubeDownloadProvider>
+      <StemSeparationProvider>
+        {children}
+      </StemSeparationProvider>
     </QueryClientProvider>
   )
 }

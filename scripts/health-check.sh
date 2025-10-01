@@ -328,7 +328,113 @@ else
     warning "No Python virtual environment found"
 fi
 
-# 7. FINAL SUMMARY
+# 8. CHECK FILENAME COMPATIBILITY
+echo
+echo "🎵 Checking Library Filename Compatibility..."
+echo "--------------------------------------------"
+
+# Check for Engine DJ problematic characters
+LIBRARY_PATHS="/tmp /var/folders"  # Common temp locations where tracks might be
+if [ -d "Music" ] || [ -d "$HOME/Music" ] || [ -d "/Users/$USER/Music" ]; then
+    MUSIC_DIRS="$HOME/Music Music /Users/$USER/Music"
+else
+    MUSIC_DIRS=""
+fi
+
+# Function to check filename for DJ system compatibility
+check_filename_compatibility() {
+    local file="$1"
+    local basename_file=$(basename "$file")
+    local has_issues=0
+
+    # Check for characters that cause issues in Engine DJ and other DJ systems
+    if echo "$basename_file" | grep -q '[<>:"|?*\\]'; then
+        warning "File contains Windows-prohibited characters: $file"
+        has_issues=1
+    fi
+
+    # Check for characters problematic in Engine DJ specifically
+    if [[ "$basename_file" == *"{"* ]] || [[ "$basename_file" == *"}"* ]] || [[ "$basename_file" == *"#"* ]] || [[ "$basename_file" == *"%"* ]] || [[ "$basename_file" == *"&"* ]] || [[ "$basename_file" == *"["* ]] || [[ "$basename_file" == *"]"* ]]; then
+        warning "File contains Engine DJ problematic characters: $file"
+        has_issues=1
+    fi
+
+    # Check for leading/trailing spaces or dots
+    if [[ "$basename_file" =~ ^[[:space:]] ]] || [[ "$basename_file" =~ [[:space:]]$ ]] || [[ "$basename_file" =~ ^\. ]] || [[ "$basename_file" =~ \.$ ]]; then
+        warning "File has leading/trailing spaces or dots: $file"
+        has_issues=1
+    fi
+
+    # Check for very long filenames (>255 chars total path)
+    if [ ${#file} -gt 255 ]; then
+        warning "File path exceeds 255 characters: $file"
+        has_issues=1
+    fi
+
+    return $has_issues
+}
+
+# Look for audio files in common locations and check them
+echo "Scanning for audio files with Engine DJ compatibility issues..."
+FOUND_FILES=0
+CHECKED_FILES=0
+
+# Check current directory for audio files
+if ls *.{mp3,flac,wav,m4a,aac,ogg} 2>/dev/null | head -20 | while read -r file; do
+    if [ -f "$file" ]; then
+        CHECKED_FILES=$((CHECKED_FILES + 1))
+        if ! check_filename_compatibility "$file"; then
+            FOUND_FILES=$((FOUND_FILES + 1))
+        fi
+    fi
+done; then
+    # Command succeeded but we can't access variables from subshell
+    true
+fi
+
+# If we're in a music-related directory, check more thoroughly
+if echo "$PWD" | grep -qi "music\|audio\|dj\|tracks"; then
+    echo "Detected music directory - performing deeper scan..."
+    find . -maxdepth 3 -type f \( -name "*.mp3" -o -name "*.flac" -o -name "*.wav" -o -name "*.m4a" -o -name "*.aac" -o -name "*.ogg" \) 2>/dev/null | head -100 | while read -r file; do
+        check_filename_compatibility "$file"
+    done
+fi
+
+# Check if we have any music files to validate against
+SAMPLE_FILES=$(find . -maxdepth 2 -type f \( -name "*.mp3" -o -name "*.flac" -o -name "*.wav" -o -name "*.m4a" \) 2>/dev/null | head -5)
+if [ -n "$SAMPLE_FILES" ]; then
+    echo "Found sample audio files - checking filename compatibility..."
+    echo "$SAMPLE_FILES" | while read -r file; do
+        check_filename_compatibility "$file"
+    done
+else
+    info "No audio files found in current directory for filename validation"
+fi
+
+# Check if sanitize-filename package is being used in source code
+echo "Checking for filename sanitization implementation..."
+SANITIZE_IMPORTS=$(find packages/ apps/ -name "*.ts" -o -name "*.tsx" -o -name "*.js" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/release/*" | xargs grep -l "import.*sanitize\|require.*sanitize" 2>/dev/null | head -1)
+
+if [ -n "$SANITIZE_IMPORTS" ]; then
+    success "Filename sanitization library is imported: $SANITIZE_IMPORTS"
+else
+    # Check if actual sanitization function exists
+    CUSTOM_SANITIZE=$(find packages/ apps/ -name "*.ts" -o -name "*.tsx" -o -name "*.js" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/release/*" | xargs grep -l "sanitizeFilename\|normalizeFilename\|cleanFilename" 2>/dev/null | head -1)
+
+    if [ -n "$CUSTOM_SANITIZE" ]; then
+        warning "Custom filename sanitization found - verify Engine DJ compatibility: $CUSTOM_SANITIZE"
+    else
+        # Check for our new filename utilities
+        if [ -f "packages/shared/src/filename-utils.ts" ]; then
+            success "Filename health checking utilities available in shared package"
+        else
+            error "No filename sanitization implementation found - Engine DJ export will fail with special characters"
+            echo "   💡 Consider implementing sanitize-filename package in USB export functionality"
+        fi
+    fi
+fi
+
+# 9. FINAL SUMMARY
 echo
 echo "📊 Health Check Summary"
 echo "======================"

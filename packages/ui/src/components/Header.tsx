@@ -1,19 +1,17 @@
-import { Disc, Search, Settings, FolderPlus, Youtube, Eye, EyeOff, ChevronDown, Music, Zap } from 'lucide-react'
+import { Disc, Search, Settings, FolderPlus, Eye, EyeOff, ChevronDown, Music, Zap } from 'lucide-react'
 import { useState } from 'react'
-import { DownloadStatusIndicator } from './DownloadStatusIndicator'
-import { StemQueueIndicator } from './StemQueueIndicator'
+// import { StemQueueIndicator } from './StemQueueIndicator' // Disabled: not implemented in simple engine
 
 interface HeaderProps {
   onScan: () => void
   onSettings: () => void
   onImport: () => void
-  onYouTubeDownloader: () => void
   onStemQueue?: () => void
   showLogViewer?: boolean
   onToggleLogViewer?: () => void
 }
 
-export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onStemQueue, showLogViewer, onToggleLogViewer }: HeaderProps) {
+export function Header({ onScan, onSettings, onImport, onStemQueue, showLogViewer, onToggleLogViewer }: HeaderProps) {
   const [showLibraryMenu, setShowLibraryMenu] = useState(false)
   const [showToolsMenu, setShowToolsMenu] = useState(false)
 
@@ -79,13 +77,6 @@ export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onSt
 
             {showToolsMenu && (
               <div className="absolute right-0 top-full mt-2 w-56 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
-                <button
-                  onClick={() => { onYouTubeDownloader(); setShowToolsMenu(false) }}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-700 rounded-t-lg text-sm font-medium transition-colors flex items-center"
-                >
-                  <Youtube className="h-4 w-4 mr-3 text-red-400" />
-                  YouTube Downloader
-                </button>
                 {onStemQueue && (
                   <button
                     onClick={() => { onStemQueue(); setShowToolsMenu(false) }}
@@ -108,11 +99,6 @@ export function Header({ onScan, onSettings, onImport, onYouTubeDownloader, onSt
             )}
           </div>
 
-          {/* 🎧 PROFESSIONAL STATUS INDICATORS - Clean & Compact */}
-          <div className="flex items-center space-x-3">
-            <DownloadStatusIndicator />
-            <StemQueueIndicator onClick={onStemQueue} />
-          </div>
 
           {/* Settings - Single Clean Button */}
           <button

@@ -15,12 +15,13 @@ declare global {
       // Engine operations
       engineScan: (folderPath: string, options?: any) => Promise<{ success: boolean; tracksFound: number; tracksAdded?: number; tracksUpdated?: number; errors?: string[]; error?: string }>
       engineGetTracks: () => Promise<{ success: boolean; tracks: any[] }>
-      engineClearLibrary: () => Promise<{ success: boolean }>
+      engineClearLibrary: () => Promise<{ success: boolean; removedCount?: number; message?: string; error?: string }>
       getAllTracks: () => Promise<any[]>
       engineAnalyze: (trackIds: string[]) => Promise<{ success: boolean; analyzed: number }>
       engineExport: (options: any) => Promise<{ success: boolean; path: string }>
       exportTracks: (trackIds: string[], options: any) => Promise<{ success: boolean; path: string }>
       deleteTracks: (trackIds: string[], deleteFiles: boolean) => Promise<{ success: boolean; result?: { removedFromLibrary: number; deletedFiles: number; errors: Array<{ trackId: string; error: string }> }; error?: string }>
+      renameTrackFile: (trackId: string, newFilename: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
       getDuplicateGroups: () => Promise<any[]>
       scanForDuplicates: () => Promise<{ success: boolean }>
       saveAnalysisSettings: (settings: any) => Promise<{ success: boolean }>
@@ -69,12 +70,6 @@ declare global {
       stemGetDefaultSettings: () => Promise<{ success: boolean; settings: any }>
       stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
 
-      // YouTube downloader API
-      youtubeCheckDependencies: () => Promise<{ success: boolean; available?: boolean; error?: string }>
-      youtubeGetVideoInfo: (url: string) => Promise<{ success: boolean; videoInfo?: any; error?: string }>
-      youtubeSearchVideos: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: any[]; error?: string }>
-      youtubeDownloadAudio: (url: string, options?: any) => Promise<{ success: boolean; downloadedFiles?: string[]; outputDir?: string; error?: string }>
-      youtubeDownloadBatch: (items: any[], globalOptions?: any) => Promise<{ success: boolean; results?: any[]; error?: string }>
 
       // Event listeners
       onScanLibrary: (callback: (folderPath: string) => void) => void

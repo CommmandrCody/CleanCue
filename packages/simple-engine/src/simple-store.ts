@@ -2,12 +2,111 @@
  * Simple Store - Replace Complex Database/Engine
  *
  * Ultra-lightweight storage using JSON files instead of complex database.
- * Perfect for preserving the great UI you built while simplifying the backend.
+ * Perfect for preserving the great UI while simplifying the backend.
  */
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+
+/**
+ * Sanitization utilities for metadata - Engine DJ safe
+ */
+class MetadataSanitizer {
+  private static readonly CHAR_MAP: Record<string, string> = {
+    'ü': 'u', 'ö': 'o', 'ä': 'a', 'ß': 'ss',
+    'Ü': 'U', 'Ö': 'O', 'Ä': 'A',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+    'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'å': 'a',
+    'Á': 'A', 'À': 'A', 'Â': 'A', 'Ã': 'A', 'Å': 'A',
+    'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+    'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I',
+    'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o',
+    'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Õ': 'O',
+    'ú': 'u', 'ù': 'u', 'û': 'u',
+    'Ú': 'U', 'Ù': 'U', 'Û': 'U',
+    'ñ': 'n', 'Ñ': 'N',
+    'ç': 'c', 'Ç': 'C',
+    'ø': 'o', 'Ø': 'O',
+    'æ': 'ae', 'Æ': 'AE',
+    'œ': 'oe', 'Œ': 'OE',
+    '\u2026': '...',
+    '\u2013': '-',
+    '\u2014': '-',
+    '\u2018': "'",
+    '\u2019': "'",
+    '\u201C': '"',
+    '\u201D': '"',
+  };
+
+  static sanitizeText(text: string): string {
+    if (!text || typeof text !== 'string') return '';
+
+    let result = text;
+
+    // Apply character normalization
+    for (const [from, to] of Object.entries(this.CHAR_MAP)) {
+      result = result.split(from).join(to);
+    }
+
+    // Remove problematic characters
+    result = result
+      .replace(/[<>:"|?*\\]/g, '')        // Windows prohibited
+      .replace(/[{}[\]#%&]/g, '')         // Engine DJ issues
+      .replace(/[\x00-\x1F\x7F]/g, '')    // Control characters
+      .replace(/\s+/g, ' ')               // Normalize whitespace
+      .trim();
+
+    return result || '';
+  }
+
+  static cleanArtist(artist: string): string {
+    if (!artist) return '';
+
+    let cleaned = this.sanitizeText(artist);
+
+    // Remove streaming platform junk
+    cleaned = cleaned
+      .replace(/\s*-?\s*(Official|VEVO|Records|Music|Channel|Audio|Video)\s*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned;
+  }
+
+  static cleanTitle(title: string, artist?: string): string {
+    if (!title) return '';
+
+    let cleaned = this.sanitizeText(title);
+
+    // Remove streaming junk
+    cleaned = cleaned
+      .replace(/\s*-?\s*(Official\s+)?(Music\s+)?Video\s*/gi, ' ')
+      .replace(/\s*-?\s*Official\s+Audio\s*/gi, ' ')
+      .replace(/\s*-?\s*(Visualiser|Visualizer|Lyric\s+Video)\s*/gi, ' ')
+      .replace(/\s*-?\s*(HD|HQ|4K|1080p|720p)\s*(Audio|Video)?\s*/gi, ' ')
+      .replace(/\s*-?\s*Remastered\s*/gi, ' ')
+      .replace(/\s+(feat\.?|ft\.?|featuring)\s+/gi, ' feat. ')
+      .replace(/\s*-?\s*(Extended|Club|Radio|Original|Instrumental)\s+(Mix|Edit|Version)\s*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Remove duplicate artist prefix
+    if (artist) {
+      const artistLower = artist.toLowerCase();
+      const cleanedLower = cleaned.toLowerCase();
+
+      if (cleanedLower.startsWith(artistLower + ' - ')) {
+        cleaned = cleaned.substring(artist.length + 3).trim();
+      } else if (cleanedLower.startsWith(artistLower + ' ')) {
+        cleaned = cleaned.substring(artist.length + 1).trim();
+      }
+    }
+
+    return cleaned;
+  }
+}
 
 export interface CuePoint {
   id: string;
@@ -21,19 +120,33 @@ export interface Track {
   id: string;
   path: string;
   filename: string;
+
+  // Core metadata (read from file tags or filename)
   title?: string;
   artist?: string;
   album?: string;
+  albumArtist?: string;
+  genre?: string;
+  year?: number;
+  trackNumber?: number;
+  composer?: string;
+  comment?: string;
+
+  // Audio properties
   duration?: number; // seconds
   bpm?: number;
   key?: string;
   camelotKey?: string;
   energy?: number; // 0-1 scale
+
+  // File properties
   size: number;
   format: string;
   dateAdded: Date;
   lastModified: Date;
   hash?: string;
+
+  // DJ features
   cuePoints?: CuePoint[];
 }
 
@@ -86,6 +199,78 @@ export class SimpleStore {
     }
   }
 
+  /**
+   * Create a backup of the current library database
+   * Returns the backup file path
+   */
+  async backup(): Promise<string> {
+    if (!this.loaded) await this.load();
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = path.join(path.dirname(this.storePath), 'backups');
+    const backupPath = path.join(backupDir, `library-backup-${timestamp}.json`);
+
+    try {
+      // Create backups directory if it doesn't exist
+      await fs.mkdir(backupDir, { recursive: true });
+
+      // Copy current library file to backup
+      if (await this.fileExists(this.storePath)) {
+        await fs.copyFile(this.storePath, backupPath);
+        console.log(`✅ Database backed up to: ${backupPath}`);
+      } else {
+        // If no file exists yet, save current state as backup
+        await fs.writeFile(backupPath, JSON.stringify(this.library, null, 2));
+        console.log(`✅ New database backup created: ${backupPath}`);
+      }
+
+      // Clean up old backups (keep last 10)
+      await this.cleanupOldBackups(backupDir, 10);
+
+      return backupPath;
+    } catch (error) {
+      console.error('Failed to create backup:', error);
+      throw new Error(`Backup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Clean up old backups, keeping only the most recent N backups
+   */
+  private async cleanupOldBackups(backupDir: string, keepCount: number): Promise<void> {
+    try {
+      const files = await fs.readdir(backupDir);
+      const backupFiles = files
+        .filter(f => f.startsWith('library-backup-') && f.endsWith('.json'))
+        .map(f => ({
+          name: f,
+          path: path.join(backupDir, f)
+        }))
+        .sort((a, b) => b.name.localeCompare(a.name)); // Sort newest first
+
+      // Delete old backups beyond keepCount
+      const toDelete = backupFiles.slice(keepCount);
+      for (const file of toDelete) {
+        await fs.unlink(file.path);
+        console.log(`🗑️  Removed old backup: ${file.name}`);
+      }
+    } catch (error) {
+      console.warn('Could not clean up old backups:', error);
+    }
+  }
+
+  /**
+   * Check if a file exists
+   */
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async save(): Promise<void> {
     if (!this.loaded) await this.load();
 
@@ -109,7 +294,13 @@ export class SimpleStore {
     const track: Track = {
       ...trackData,
       id: this.generateId(trackData.path),
-      dateAdded: new Date()
+      dateAdded: new Date(),
+      // Sanitize metadata on insert
+      artist: trackData.artist ? MetadataSanitizer.cleanArtist(trackData.artist) : undefined,
+      title: trackData.title ? MetadataSanitizer.cleanTitle(trackData.title, trackData.artist) : undefined,
+      album: trackData.album ? MetadataSanitizer.sanitizeText(trackData.album) : undefined,
+      genre: trackData.genre ? MetadataSanitizer.sanitizeText(trackData.genre) : undefined,
+      composer: trackData.composer ? MetadataSanitizer.sanitizeText(trackData.composer) : undefined,
     };
 
     // Remove existing track with same path
@@ -128,9 +319,30 @@ export class SimpleStore {
     const trackIndex = this.library.tracks.findIndex(t => t.id === id);
     if (trackIndex === -1) return undefined;
 
+    // Sanitize metadata on update
+    const sanitizedUpdates = { ...updates };
+    if (sanitizedUpdates.artist) {
+      sanitizedUpdates.artist = MetadataSanitizer.cleanArtist(sanitizedUpdates.artist);
+    }
+    if (sanitizedUpdates.title) {
+      sanitizedUpdates.title = MetadataSanitizer.cleanTitle(
+        sanitizedUpdates.title,
+        sanitizedUpdates.artist || this.library.tracks[trackIndex].artist
+      );
+    }
+    if (sanitizedUpdates.album) {
+      sanitizedUpdates.album = MetadataSanitizer.sanitizeText(sanitizedUpdates.album);
+    }
+    if (sanitizedUpdates.genre) {
+      sanitizedUpdates.genre = MetadataSanitizer.sanitizeText(sanitizedUpdates.genre);
+    }
+    if (sanitizedUpdates.composer) {
+      sanitizedUpdates.composer = MetadataSanitizer.sanitizeText(sanitizedUpdates.composer);
+    }
+
     this.library.tracks[trackIndex] = {
       ...this.library.tracks[trackIndex],
-      ...updates
+      ...sanitizedUpdates
     };
 
     return this.library.tracks[trackIndex];

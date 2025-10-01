@@ -4,18 +4,20 @@ import { ScanDialog } from './components/ScanDialog'
 import { HealthDashboard } from './components/HealthDashboard'
 import { DuplicateDetection } from './components/DuplicateDetection'
 import { AnalysisProgress } from './components/AnalysisProgress'
+import { StemSeparation } from './components/StemSeparation'
+import { SmartMix } from './components/SmartMix'
+import { FilenameRenaming } from './components/FilenameRenaming'
+import { MetadataTagging } from './components/MetadataTagging'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { Settings } from './components/Settings'
 import { LibraryImport } from './components/LibraryImport'
-import { YouTubeDownloader } from './components/YouTubeDownloader'
 import { AudioPlayer } from './components/AudioPlayer'
 import { LogViewer } from './components/LogViewer'
-import { StemQueueDialog } from './components/StemQueueDialog'
-import { YouTubeDownloadProvider } from './contexts/YouTubeDownloadContext'
-import { StemSeparationProvider } from './contexts/StemSeparationContext'
+// import { StemQueueDialog } from './components/StemQueueDialog' // Disabled: not implemented in simple engine
+// import { StemSeparationProvider } from './contexts/StemSeparationContext' // Disabled: not implemented in simple engine
 
-type ViewType = 'library' | 'health' | 'duplicates' | 'analysis'
+type ViewType = 'library' | 'health' | 'duplicates' | 'analysis' | 'filename' | 'metadata' | 'stems' | 'smartmix'
 
 interface Track {
   id: string
@@ -31,13 +33,13 @@ function AppContent() {
   const [showScanDialog, setShowScanDialog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [showYouTubeDownloader, setShowYouTubeDownloader] = useState(false)
   const [showStemQueue, setShowStemQueue] = useState(false)
   const [showLogViewer, setShowLogViewer] = useState(true)
   const [logViewerHeight] = useState(200)
   const [showHelp, setShowHelp] = useState(false)
   const [appReady, setAppReady] = useState(false)
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0)
+  const [selectedTracks, setSelectedTracks] = useState<string[]>([])
 
   // Audio player state
   const [currentPlaylist, setCurrentPlaylist] = useState<Track[]>([])
@@ -120,9 +122,9 @@ function AppContent() {
       }
 
       // Number keys for view switching
-      if (e.key >= '1' && e.key <= '4' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key >= '1' && e.key <= '8' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        const views: ViewType[] = ['library', 'health', 'duplicates', 'analysis']
+        const views: ViewType[] = ['library', 'health', 'duplicates', 'analysis', 'filename', 'metadata', 'stems', 'smartmix']
         const viewIndex = parseInt(e.key) - 1
         if (views[viewIndex]) {
           setCurrentView(views[viewIndex])
@@ -141,7 +143,6 @@ function AppContent() {
         else if (showScanDialog) setShowScanDialog(false)
         else if (showSettings) setShowSettings(false)
         else if (showImport) setShowImport(false)
-        else if (showYouTubeDownloader) setShowYouTubeDownloader(false)
         else if (showStemQueue) setShowStemQueue(false)
         else if (showPlayer) handleClosePlayer()
       }
@@ -149,7 +150,7 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyboard)
     return () => window.removeEventListener('keydown', handleKeyboard)
-  }, [showLogViewer, showScanDialog, showSettings, showImport, showYouTubeDownloader, showStemQueue, showPlayer, showHelp])
+  }, [showLogViewer, showScanDialog, showSettings, showImport, showStemQueue, showPlayer, showHelp])
 
 
   const renderView = () => {
@@ -166,15 +167,23 @@ function AppContent() {
 
     switch (currentView) {
       case 'library':
-        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} />
       case 'health':
         return <HealthDashboard />
       case 'duplicates':
         return <DuplicateDetection />
       case 'analysis':
         return <AnalysisProgress />
+      case 'filename':
+        return <FilenameRenaming isOpen={true} onClose={() => setCurrentView('library')} selectedTracks={selectedTracks} />
+      case 'metadata':
+        return <MetadataTagging isOpen={true} onClose={() => setCurrentView('library')} selectedTracks={selectedTracks} />
+      case 'stems':
+        return <StemSeparation />
+      case 'smartmix':
+        return <SmartMix />
       default:
-        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} />
     }
   }
 
@@ -184,7 +193,6 @@ function AppContent() {
         onScan={() => setShowScanDialog(true)}
         onSettings={() => setShowSettings(true)}
         onImport={() => setShowImport(true)}
-        onYouTubeDownloader={() => setShowYouTubeDownloader(true)}
         onStemQueue={() => setShowStemQueue(true)}
         showLogViewer={showLogViewer}
         onToggleLogViewer={() => setShowLogViewer(!showLogViewer)}
@@ -229,19 +237,15 @@ function AppContent() {
         />
       )}
 
-      {showYouTubeDownloader && (
-        <YouTubeDownloader
-          isOpen={showYouTubeDownloader}
-          onClose={() => setShowYouTubeDownloader(false)}
-        />
-      )}
 
+      {/* StemQueueDialog disabled - not implemented in simple engine
       {showStemQueue && (
         <StemQueueDialog
           isOpen={showStemQueue}
           onClose={() => setShowStemQueue(false)}
         />
       )}
+      */}
 
       {/* Audio Player */}
       {showPlayer && currentPlaylist.length > 0 && (
@@ -309,6 +313,22 @@ function AppContent() {
                     <span className="text-gray-300">Analysis progress</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">4</kbd>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Filename renaming</span>
+                    <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">5</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Metadata tagging</span>
+                    <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">6</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Stem separation</span>
+                    <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">7</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Smart mix</span>
+                    <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">8</kbd>
+                  </div>
                 </div>
               </div>
 
@@ -345,13 +365,7 @@ function AppContent() {
 }
 
 function App() {
-  return (
-    <YouTubeDownloadProvider>
-      <StemSeparationProvider>
-        <AppContent />
-      </StemSeparationProvider>
-    </YouTubeDownloadProvider>
-  )
+  return <AppContent />
 }
 
 export default App

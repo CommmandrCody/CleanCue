@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engineExport: (options: any) => ipcRenderer.invoke('engine-export', options),
   exportTracks: (trackIds: string[], options: any) => ipcRenderer.invoke('export-tracks', trackIds, options),
   deleteTracks: (trackIds: string[], deleteFiles: boolean) => ipcRenderer.invoke('engine-delete-tracks', trackIds, deleteFiles),
+  renameTrackFile: (trackId: string, newFilename: string) => ipcRenderer.invoke('rename-track-file', trackId, newFilename),
   getDuplicateGroups: () => ipcRenderer.invoke('get-duplicate-groups'),
   scanForDuplicates: () => ipcRenderer.invoke('scan-for-duplicates'),
   saveAnalysisSettings: (settings: any) => ipcRenderer.invoke('save-analysis-settings', settings),
@@ -73,12 +74,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stemGetDefaultSettings: () => ipcRenderer.invoke('stem-get-default-settings'),
   stemEstimateTime: (trackId: string, model: string) => ipcRenderer.invoke('stem-estimate-time', trackId, model),
 
-  // YouTube downloader operations
-  youtubeCheckDependencies: () => ipcRenderer.invoke('youtube-check-dependencies'),
-  youtubeGetVideoInfo: (url: string) => ipcRenderer.invoke('youtube-get-video-info', url),
-  youtubeSearchVideos: (query: string, maxResults?: number) => ipcRenderer.invoke('youtube-search-videos', query, maxResults),
-  youtubeDownloadAudio: (url: string, options?: any) => ipcRenderer.invoke('youtube-download-audio', url, options),
-  youtubeDownloadBatch: (items: any[], globalOptions?: any) => ipcRenderer.invoke('youtube-download-batch', items, globalOptions),
 
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => {
@@ -146,12 +141,6 @@ export interface ElectronAPI {
   stemGetDefaultSettings: () => Promise<{ success: boolean; settings: any }>
   stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
 
-  // YouTube downloader API
-  youtubeCheckDependencies: () => Promise<{ success: boolean; available?: boolean; error?: string }>
-  youtubeGetVideoInfo: (url: string) => Promise<{ success: boolean; videoInfo?: any; error?: string }>
-  youtubeSearchVideos: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: any[]; error?: string }>
-  youtubeDownloadAudio: (url: string, options?: any) => Promise<{ success: boolean; downloadedFiles?: string[]; outputDir?: string; error?: string }>
-  youtubeDownloadBatch: (items: any[], globalOptions?: any) => Promise<{ success: boolean; results?: any[]; error?: string }>
 
   // Background Job Management API types
   getAllJobs: () => Promise<any[]>

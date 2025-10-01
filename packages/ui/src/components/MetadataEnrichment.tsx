@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Play, X, Download, Music, Image, Volume2, Database, CheckCircle, Clock } from 'lucide-react'
+import { Play, X, Music, Image, Volume2, Database, CheckCircle, Clock } from 'lucide-react'
 import clsx from 'clsx'
 
 interface EnrichmentJob {
@@ -67,12 +67,6 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
     normalizationPreset: 'dj',
     batchSize: 10
   })
-  const [ytDlpStatus, setYtDlpStatus] = useState<{
-    installed: boolean
-    version?: string
-    updating?: boolean
-    cookiesConfigured: boolean
-  }>({ installed: false, cookiesConfigured: false })
 
   // Removed conflicting audio player - using global player from App.tsx instead
 
@@ -81,8 +75,6 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
   useEffect(() => {
     if (!isOpen) return
 
-    // Check YouTube downloader status
-    checkYtDlpStatus()
 
 
 
@@ -98,18 +90,6 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
     }
   }, [isOpen, activeJob])
 
-  const checkYtDlpStatus = async () => {
-    try {
-      // Mock - in real implementation this would call the backend
-      setYtDlpStatus({
-        installed: true,
-        version: '2024.01.01',
-        cookiesConfigured: false
-      })
-    } catch (error) {
-      console.error('Error checking yt-dlp status:', error)
-    }
-  }
 
   const startEnrichment = async () => {
     if (selectedTracks.length === 0) return
@@ -383,33 +363,6 @@ export function MetadataEnrichment({ isOpen, onClose, selectedTracks = [] }: Met
               </div>
             )}
 
-            {/* YouTube Status */}
-            <div className="mb-6 p-4 bg-gray-700 rounded-lg">
-              <h4 className="font-medium mb-2 flex items-center">
-                <Download className="h-4 w-4 mr-2" />
-                YouTube Downloader
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>Installed:</span>
-                  <span className={ytDlpStatus.installed ? 'text-green-400' : 'text-red-400'}>
-                    {ytDlpStatus.installed ? 'Yes' : 'No'}
-                  </span>
-                </div>
-                {ytDlpStatus.version && (
-                  <div className="flex items-center justify-between">
-                    <span>Version:</span>
-                    <span className="text-gray-300">{ytDlpStatus.version}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span>Cookies:</span>
-                  <span className={ytDlpStatus.cookiesConfigured ? 'text-green-400' : 'text-yellow-400'}>
-                    {ytDlpStatus.cookiesConfigured ? 'Configured' : 'Missing'}
-                  </span>
-                </div>
-              </div>
-            </div>
 
             {/* Start Button */}
             <button

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Download, Play, Music, Key, Zap, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, Music2, List, Grid3X3, ChevronRight, ChevronDown, Layers } from 'lucide-react'
+import { Download, Play, Music, Key, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, List, Grid3X3, ChevronDown, ChevronRight, Layers, Zap } from 'lucide-react'
 import clsx from 'clsx'
 import { ExportDialog } from './ExportDialog'
-import { StemSeparationDialog } from './StemSeparationDialog'
+// import { StemSeparationDialog } from './StemSeparationDialog' // Disabled: not implemented in simple engine
 
 interface StemFile {
   type: 'vocals' | 'drums' | 'bass' | 'other' | 'piano' | 'guitar'
@@ -15,8 +15,12 @@ interface Track {
   title: string
   artist: string
   album?: string
+  albumArtist?: string
   genre?: string
   year?: number
+  trackNumber?: number
+  composer?: string
+  comment?: string
   bpm?: number
   key?: string
   camelotKey?: string
@@ -34,16 +38,17 @@ interface Track {
 
 interface LibraryViewProps {
   onPlayTrack?: (tracks: Track[], startIndex: number) => void
+  onSelectionChange?: (selectedIds: string[]) => void
 }
 
-export function LibraryView({ onPlayTrack }: LibraryViewProps) {
+export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps) {
   const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTracks, setSelectedTracks] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
-  const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false)
+  // const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false) // Disabled: not implemented in simple engine
   const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
   const [expandedTracks, setExpandedTracks] = useState<string[]>([])
   const [keyDisplayMode, setKeyDisplayMode] = useState<'musical' | 'camelot'>(() => {
@@ -124,20 +129,30 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
   )
 
   const toggleTrackSelection = (trackId: string) => {
-    setSelectedTracks(prev =>
-      prev.includes(trackId)
+    setSelectedTracks(prev => {
+      const newSelection = prev.includes(trackId)
         ? prev.filter(id => id !== trackId)
         : [...prev, trackId]
-    )
+
+      // Notify parent of selection change
+      if (onSelectionChange) {
+        onSelectionChange(newSelection)
+      }
+
+      return newSelection
+    })
   }
 
   const toggleSelectAll = () => {
-    if (selectedTracks.length === filteredTracks.length) {
-      // All tracks are selected, deselect all
-      setSelectedTracks([])
-    } else {
-      // Not all tracks are selected, select all
-      setSelectedTracks(filteredTracks.map(track => track.id))
+    const newSelection = selectedTracks.length === filteredTracks.length
+      ? [] // All tracks are selected, deselect all
+      : filteredTracks.map(track => track.id) // Not all tracks are selected, select all
+
+    setSelectedTracks(newSelection)
+
+    // Notify parent of selection change
+    if (onSelectionChange) {
+      onSelectionChange(newSelection)
     }
   }
 
@@ -299,6 +314,20 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     return 'text-blue-400' // Slow/Ballad
   }
 
+  const getMetadataQuality = (track: Track) => {
+    // Check if track has rich metadata (likely from file tags)
+    const hasRichMetadata = !!(track.album || track.genre || track.year || track.albumArtist)
+    const hasBasicMetadata = !!(track.title && track.artist)
+
+    if (hasRichMetadata) {
+      return { quality: 'high', label: 'Tagged', color: 'bg-green-900/30 text-green-400 border-green-700' }
+    } else if (hasBasicMetadata) {
+      return { quality: 'medium', label: 'Basic', color: 'bg-blue-900/30 text-blue-400 border-blue-700' }
+    } else {
+      return { quality: 'low', label: 'Filename', color: 'bg-gray-700 text-gray-400 border-gray-600' }
+    }
+  }
+
   const handleDeleteClick = () => {
     if (selectedTracks.length > 0) {
       setShowDeleteDialog(true)
@@ -370,71 +399,7 @@ export function LibraryView({ onPlayTrack }: LibraryViewProps) {
     }
   }
 
-  // 🎧 SMART MIX GENERATION - Professional DJ Mix Creator
-  const generateSmartMix = () => {
-    if (selectedTracks.length < 2) {
-      alert('Select at least 2 tracks to generate a smart mix')
-      return
-    }
-
-    // Get selected track objects with analysis data
-    const selectedTrackObjects = filteredTracks.filter(track => selectedTracks.includes(track.id))
-    const analyzedTracks = selectedTrackObjects.filter(track => track.bpm && track.key && track.energy)
-
-    if (analyzedTracks.length < 2) {
-      alert('At least 2 tracks need BPM, Key, and Energy analysis for smart mixing')
-      return
-    }
-
-    console.log('🎧 GENERATING SMART DJ MIX...')
-
-    // Smart mix algorithm using harmonic mixing and energy progression
-    const sortedTracks = [...analyzedTracks].sort((a, b) => {
-      // Primary sort: Energy (for flow)
-      const energyDiff = a.energy! - b.energy!
-      if (Math.abs(energyDiff) > 5) return energyDiff
-
-      // Secondary sort: BPM compatibility
-      const bpmDiff = a.bpm! - b.bpm!
-      return bpmDiff
-    })
-
-    // Calculate mix compatibility score
-    let totalCompatibility = 0
-    let harmonicMatches = 0
-    let bpmMatches = 0
-
-    for (let i = 0; i < sortedTracks.length - 1; i++) {
-      const current = sortedTracks[i]
-      const next = sortedTracks[i + 1]
-
-      // Check harmonic compatibility
-      const harmonicComp = getHarmonicCompatibility(current.key!, next.key!)
-      if (harmonicComp === 'perfect' || harmonicComp === 'good') harmonicMatches++
-
-      // Check BPM compatibility
-      const bpmComp = getBpmCompatibility(current.bpm!, next.bpm!)
-      if (bpmComp === 'perfect' || bpmComp === 'good') bpmMatches++
-    }
-
-    totalCompatibility = ((harmonicMatches + bpmMatches) / ((sortedTracks.length - 1) * 2)) * 100
-
-    // Display smart mix results
-    const mixSummary = `🎧 SMART MIX GENERATED
-
-Tracks: ${sortedTracks.length}
-Harmonic Matches: ${harmonicMatches}/${sortedTracks.length - 1}
-BPM Matches: ${bpmMatches}/${sortedTracks.length - 1}
-Overall Compatibility: ${Math.round(totalCompatibility)}%
-
-Track Order:
-${sortedTracks.map((track, i) =>
-  `${i + 1}. ${track.artist} - ${track.title} (${track.bpm} BPM, ${keyDisplayMode === 'camelot' ? track.camelotKey : track.key}, Energy: ${track.energy})`
-).join('\n')}`
-
-    alert(mixSummary)
-    console.log('🎧 Smart Mix Results:', { sortedTracks, harmonicMatches, bpmMatches, totalCompatibility })
-  }
+  // Smart Mix functionality moved to dedicated SmartMix component
 
   return (
     <div className="space-y-6">
@@ -561,15 +526,8 @@ ${sortedTracks.map((track, i) =>
                       Export to DJ Software
                     </button>
 
-                    <button
-                      onClick={() => generateSmartMix()}
-                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
-                      title="Generate smart DJ mix with harmonic analysis"
-                    >
-                      <Zap className="h-4 w-4 mr-2" />
-                      Generate Smart Mix
-                    </button>
 
+                    {/* STEM Separation disabled - not implemented in simple engine
                     <button
                       onClick={() => setShowStemSeparationDialog(true)}
                       className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
@@ -578,6 +536,7 @@ ${sortedTracks.map((track, i) =>
                       <Music2 className="h-4 w-4 mr-2" />
                       STEM Separation
                     </button>
+                    */}
 
                     <div className="border-t border-gray-700"></div>
 
@@ -687,8 +646,19 @@ ${sortedTracks.map((track, i) =>
 
                   <div className="flex items-center min-w-0">
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate text-sm flex items-center">
+                      <div className="font-medium truncate text-sm flex items-center gap-2">
                         {track.title}
+
+                        {/* Metadata Quality Badge */}
+                        {(() => {
+                          const quality = getMetadataQuality(track)
+                          return (
+                            <span className={`px-1.5 py-0.5 text-xs rounded border ${quality.color} flex-shrink-0`}>
+                              {quality.label}
+                            </span>
+                          )
+                        })()}
+
                         {/* 🎧 DJ READINESS INDICATORS */}
                         {track.bpm && track.key && track.energy && (
                           <span
@@ -730,15 +700,15 @@ ${sortedTracks.map((track, i) =>
                           </span>
                         )}
                         {/* DJ Suitability Score */}
-                        {track.bpm && track.energy && (
+                        {track.bpm && track.bpm > 60 && track.energy !== undefined && track.energy !== null && track.energy >= 1 && (
                           <span
                             className={clsx('ml-2 text-xs',
                               track.energy >= 70 && track.bpm >= 120 ? 'text-green-400' :
-                              track.energy >= 50 && track.bpm >= 100 ? 'text-yellow-400' : 'text-gray-500'
+                              track.energy >= 50 && track.bpm >= 100 ? 'text-yellow-400' : 'text-blue-400'
                             )}
                             title={`DJ Suitability: ${track.energy >= 70 && track.bpm >= 120 ? 'High Energy' : track.energy >= 50 && track.bpm >= 100 ? 'Medium Energy' : 'Low Energy'}`}
                           >
-                            • {track.energy >= 70 && track.bpm >= 120 ? '🔥 Peak Time' : track.energy >= 50 && track.bpm >= 100 ? '🎆 Main Floor' : '🌙 Chill'}
+                            • {track.energy >= 70 && track.bpm >= 120 ? '🔥 Peak Time' : track.energy >= 50 && track.bpm >= 100 ? '🎆 Main Floor' : '🎵 Ambient'}
                           </span>
                         )}
                       </div>
@@ -1062,7 +1032,7 @@ ${sortedTracks.map((track, i) =>
         />
       )}
 
-      {/* STEM Separation Dialog */}
+      {/* STEM Separation Dialog - Disabled: not implemented in simple engine
       {showStemSeparationDialog && (
         <StemSeparationDialog
           isOpen={showStemSeparationDialog}
@@ -1070,6 +1040,7 @@ ${sortedTracks.map((track, i) =>
           selectedTracks={filteredTracks.filter(track => selectedTracks.includes(track.id))}
         />
       )}
+      */}
 
     </div>
   )
