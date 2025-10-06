@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react'
-import { Download, Play, Music, Key, Trash2, FolderMinus, X, CheckSquare, Square, BarChart3, List, Grid3X3, ChevronDown, ChevronRight, Layers, Zap } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Play, Music, Key, Trash2, FolderMinus, X, CheckSquare, Square, List, Grid3X3, ChevronDown, ChevronRight, Layers, Zap, Info } from 'lucide-react'
 import clsx from 'clsx'
-import { ExportDialog } from './ExportDialog'
 // import { StemSeparationDialog } from './StemSeparationDialog' // Disabled: not implemented in simple engine
 
 interface StemFile {
@@ -39,15 +38,15 @@ interface Track {
 interface LibraryViewProps {
   onPlayTrack?: (tracks: Track[], startIndex: number) => void
   onSelectionChange?: (selectedIds: string[]) => void
+  selectedTracks?: string[]
 }
 
-export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps) {
+export function LibraryView({ onPlayTrack, onSelectionChange, selectedTracks: selectedTracksProp = [] }: LibraryViewProps) {
   const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedTracks, setSelectedTracks] = useState<string[]>([])
+  const selectedTracks = selectedTracksProp
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [showExportDialog, setShowExportDialog] = useState(false)
   // const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false) // Disabled: not implemented in simple engine
   const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
   const [expandedTracks, setExpandedTracks] = useState<string[]>([])
@@ -56,10 +55,89 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
     return (localStorage.getItem('keyDisplayMode') as 'musical' | 'camelot') || 'camelot'
   })
 
+  // Column widths state
+  const [columnWidths, setColumnWidths] = useState({
+    checkbox: 40,
+    play: 40,
+    expand: 40,
+    track: 400,
+    artist: 200,
+    bpm: 80,
+    key: 80,
+    energy: 60
+  })
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    track: Track
+  } | null>(null)
+
+  // Resize state
+  const [isResizing, setIsResizing] = useState<string | null>(null)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(0)
+
   useEffect(() => {
     console.log('[LibraryView] Component mounted, loading tracks')
     loadTracks()
   }, [])
+
+  // Handle column resize
+  const handleResizeStart = (columnName: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(columnName)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = columnWidths[columnName as keyof typeof columnWidths]
+  }
+
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!isResizing) return
+
+      const diff = e.clientX - resizeStartX.current
+      const newWidth = Math.max(50, resizeStartWidth.current + diff)
+
+      setColumnWidths(prev => ({
+        ...prev,
+        [isResizing]: newWidth
+      }))
+    }
+
+    const handleResizeEnd = () => {
+      setIsResizing(null)
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove)
+      document.addEventListener('mouseup', handleResizeEnd)
+
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove)
+        document.removeEventListener('mouseup', handleResizeEnd)
+      }
+    }
+  }, [isResizing])
+
+  // Handle context menu
+  const handleContextMenu = (e: React.MouseEvent, track: Track) => {
+    e.preventDefault()
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      track
+    })
+  }
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null)
+    if (contextMenu) {
+      document.addEventListener('click', handleClick)
+      return () => document.removeEventListener('click', handleClick)
+    }
+  }, [contextMenu])
 
   const loadTracks = async () => {
     try {
@@ -129,26 +207,20 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
   )
 
   const toggleTrackSelection = (trackId: string) => {
-    setSelectedTracks(prev => {
-      const newSelection = prev.includes(trackId)
-        ? prev.filter(id => id !== trackId)
-        : [...prev, trackId]
+    const newSelection = selectedTracks.includes(trackId)
+      ? selectedTracks.filter(id => id !== trackId)
+      : [...selectedTracks, trackId]
 
-      // Notify parent of selection change
-      if (onSelectionChange) {
-        onSelectionChange(newSelection)
-      }
-
-      return newSelection
-    })
+    // Notify parent of selection change
+    if (onSelectionChange) {
+      onSelectionChange(newSelection)
+    }
   }
 
   const toggleSelectAll = () => {
     const newSelection = selectedTracks.length === filteredTracks.length
       ? [] // All tracks are selected, deselect all
       : filteredTracks.map(track => track.id) // Not all tracks are selected, select all
-
-    setSelectedTracks(newSelection)
 
     // Notify parent of selection change
     if (onSelectionChange) {
@@ -348,7 +420,9 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
       await loadTracks()
 
       // Clear selection after successful delete
-      setSelectedTracks([])
+      if (onSelectionChange) {
+        onSelectionChange([])
+      }
       setShowDeleteDialog(false)
     } catch (error) {
       console.error('Failed to delete tracks:', error)
@@ -370,34 +444,6 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
     localStorage.setItem('keyDisplayMode', newMode)
   }
 
-  const handleAnalyzeClick = async () => {
-    if (selectedTracks.length === 0) return
-
-    console.log('Creating analysis jobs for tracks:', selectedTracks)
-
-    try {
-      if (window.electronAPI) {
-        console.log('Calling createAnalysisJobs...')
-        const result = await window.electronAPI.createAnalysisJobs(selectedTracks)
-        console.log('Analysis jobs created:', result)
-
-        // Log the exact response structure for debugging
-        console.log('[LibraryView] createAnalysisJobs response:', JSON.stringify(result))
-
-        if (typeof result === 'object' && result && 'success' in result && (result as any).success) {
-          const jobsCreated = (result as any).jobsCreated || selectedTracks.length
-          console.log(`✅ Successfully submitted ${selectedTracks.length} tracks to analysis queue (${jobsCreated} jobs created)`)
-          // Jobs will be processed in background, UI will update via job system
-        } else {
-          console.error('❌ Failed to create analysis jobs:', typeof result === 'object' && result && 'error' in result ? (result as any).error : result)
-        }
-      } else {
-        console.error('electronAPI not available')
-      }
-    } catch (error) {
-      console.error('Failed to create analysis jobs:', error)
-    }
-  }
 
   // Smart Mix functionality moved to dedicated SmartMix component
 
@@ -500,56 +546,13 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
             </button>
 
             {selectedTracks.length > 0 && (
-              <>
-                <button
-                  onClick={handleAnalyzeClick}
-                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-sm font-medium transition-colors"
-                  title="Analyze selected tracks for BPM, key, and energy"
-                >
-                  <BarChart3 className="h-4 w-4 inline mr-2" />
-                  Analyze ({selectedTracks.length})
-                </button>
-
-                {/* Secondary Actions - Grouped in dropdown */}
-                <div className="relative group">
-                  <button className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm font-medium transition-colors flex items-center">
-                    More
-                    <ChevronDown className="h-4 w-4 ml-1" />
-                  </button>
-
-                  <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 min-w-48">
-                    <button
-                      onClick={() => setShowExportDialog(true)}
-                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Export to DJ Software
-                    </button>
-
-
-                    {/* STEM Separation disabled - not implemented in simple engine
-                    <button
-                      onClick={() => setShowStemSeparationDialog(true)}
-                      className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center text-sm"
-                      title="Separate tracks into stems"
-                    >
-                      <Music2 className="h-4 w-4 mr-2" />
-                      STEM Separation
-                    </button>
-                    */}
-
-                    <div className="border-t border-gray-700"></div>
-
-                    <button
-                      onClick={handleDeleteClick}
-                      className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/20 flex items-center text-sm"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete from Library
-                    </button>
-                  </div>
-                </div>
-              </>
+              <button
+                onClick={handleDeleteClick}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium transition-colors"
+              >
+                <Trash2 className="h-4 w-4 inline mr-2" />
+                Delete ({selectedTracks.length})
+              </button>
             )}
           </div>
         </div>
@@ -573,15 +576,63 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
         /* Compact List View */
         <div className="bg-gray-800 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="grid grid-cols-[auto_40px_auto_1fr_200px_80px_80px_60px] gap-3 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300 min-w-[800px]">
-            <div>✓</div>
-            <div>▶</div>
-            <div></div>
-            <div>Track</div>
-            <div>Artist</div>
-            <div>BPM</div>
-            <div>Key</div>
-            <div>⚡</div>
+            <div
+              className="flex gap-3 px-4 py-2 bg-gray-700 text-xs font-medium text-gray-300 min-w-[800px]"
+              style={{ userSelect: isResizing ? 'none' : 'auto' }}
+            >
+              <div style={{ width: columnWidths.checkbox }} className="flex-shrink-0">✓</div>
+              <div
+                style={{ width: columnWidths.play }}
+                className="flex-shrink-0 relative group"
+              >
+                <span>▶</span>
+                <div
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+                  onMouseDown={(e) => handleResizeStart('play', e)}
+                />
+              </div>
+              <div style={{ width: columnWidths.expand }} className="flex-shrink-0"></div>
+              <div
+                style={{ width: columnWidths.track }}
+                className="flex-shrink-0 relative group"
+              >
+                <span>Track</span>
+                <div
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+                  onMouseDown={(e) => handleResizeStart('track', e)}
+                />
+              </div>
+              <div
+                style={{ width: columnWidths.artist }}
+                className="flex-shrink-0 relative group"
+              >
+                <span>Artist</span>
+                <div
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+                  onMouseDown={(e) => handleResizeStart('artist', e)}
+                />
+              </div>
+              <div
+                style={{ width: columnWidths.bpm }}
+                className="flex-shrink-0 relative group"
+              >
+                <span>BPM</span>
+                <div
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+                  onMouseDown={(e) => handleResizeStart('bpm', e)}
+                />
+              </div>
+              <div
+                style={{ width: columnWidths.key }}
+                className="flex-shrink-0 relative group"
+              >
+                <span>Key</span>
+                <div
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors"
+                  onMouseDown={(e) => handleResizeStart('key', e)}
+                />
+              </div>
+              <div style={{ width: columnWidths.energy }} className="flex-shrink-0">⚡</div>
           </div>
 
             <div className="divide-y divide-gray-700">
@@ -595,11 +646,12 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                 {/* Main Track Row */}
                 <div
                   className={clsx(
-                    'grid grid-cols-[auto_40px_auto_1fr_200px_80px_80px_60px] gap-3 px-4 py-2 hover:bg-gray-700 transition-colors text-sm min-w-[800px]',
+                    'flex gap-3 px-4 py-2 hover:bg-gray-700 transition-colors text-sm min-w-[800px]',
                     selectedTracks.includes(track.id) && 'bg-primary-900/20'
                   )}
+                  onContextMenu={(e) => handleContextMenu(e, track)}
                 >
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-shrink-0" style={{ width: columnWidths.checkbox }}>
                     <input
                       type="checkbox"
                       checked={selectedTracks.includes(track.id)}
@@ -608,7 +660,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     />
                   </div>
 
-                  <div className="flex items-center justify-center">
+                  <div className="flex items-center justify-center flex-shrink-0" style={{ width: columnWidths.play }}>
                     <button
                       onClick={() => handlePlayTrack(track)}
                       className="p-1 text-gray-400 hover:text-primary-400 transition-colors"
@@ -618,7 +670,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     </button>
                   </div>
 
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-shrink-0" style={{ width: columnWidths.expand }}>
                     {track.stemSeparation && track.stemSeparation.stems && track.stemSeparation.stems.length > 0 ? (
                       <button
                         onClick={() => toggleTrackExpansion(track.id)}
@@ -644,7 +696,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     )}
                   </div>
 
-                  <div className="flex items-center min-w-0">
+                  <div className="flex items-center min-w-0 flex-shrink-0" style={{ width: columnWidths.track }}>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate text-sm flex items-center gap-2">
                         {track.title}
@@ -715,9 +767,9 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     </div>
                   </div>
 
-                  <div className="flex items-center text-gray-300 truncate text-sm">{track.artist}</div>
+                  <div className="flex items-center text-gray-300 truncate text-sm flex-shrink-0" style={{ width: columnWidths.artist }}>{track.artist}</div>
 
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-shrink-0" style={{ width: columnWidths.bpm }}>
                     {track.bpm && (
                       <div className="flex items-center space-x-1">
                         <span className={clsx('font-medium text-xs', getBpmColor(track.bpm))}>{track.bpm}</span>
@@ -747,7 +799,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     )}
                   </div>
 
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-shrink-0" style={{ width: columnWidths.key }}>
                     {(keyDisplayMode === 'camelot' ? track.camelotKey : track.key) && (
                       <div className="flex items-center space-x-1">
                         <span className="px-1 py-0.5 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">
@@ -779,7 +831,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
                     )}
                   </div>
 
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-shrink-0" style={{ width: columnWidths.energy }}>
                     {track.energy ? (
                       <div className="flex items-center space-x-1" title={`Energy Level: ${track.energy}/100`}>
                         <div className="w-6 h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -1024,14 +1076,6 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
         </div>
       )}
 
-      {/* Export Dialog */}
-      {showExportDialog && (
-        <ExportDialog
-          onClose={() => setShowExportDialog(false)}
-          selectedTracks={selectedTracks}
-        />
-      )}
-
       {/* STEM Separation Dialog - Disabled: not implemented in simple engine
       {showStemSeparationDialog && (
         <StemSeparationDialog
@@ -1041,6 +1085,40 @@ export function LibraryView({ onPlayTrack, onSelectionChange }: LibraryViewProps
         />
       )}
       */}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-gray-800 border border-gray-700 rounded-md shadow-lg py-2 z-50"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-4 py-2 text-sm border-b border-gray-700">
+            <div className="font-medium text-white mb-1">{contextMenu.track.title}</div>
+            <div className="text-xs text-gray-400">{contextMenu.track.artist}</div>
+          </div>
+          <div className="px-4 py-3">
+            <div className="text-xs text-gray-400 mb-1">File Path:</div>
+            <div className="text-xs text-white font-mono break-all max-w-md">
+              {contextMenu.track.path}
+            </div>
+          </div>
+          <div className="border-t border-gray-700"></div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(contextMenu.track.path)
+              setContextMenu(null)
+            }}
+            className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-700 flex items-center"
+          >
+            <Info className="h-4 w-4 mr-2" />
+            Copy File Path
+          </button>
+        </div>
+      )}
 
     </div>
   )

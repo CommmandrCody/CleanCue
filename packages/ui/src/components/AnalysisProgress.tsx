@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, RotateCcw, BarChart3, Key, RefreshCw, Shuffle, Activity, Grid3X3, Target, Settings } from 'lucide-react'
+import { Play, Pause, RotateCcw, BarChart3, Key, RefreshCw, Shuffle, Activity, Grid3X3, Target, Settings, AlertTriangle } from 'lucide-react'
 import clsx from 'clsx'
 import { JobManagement } from './JobManagement'
+import { useProcessing } from '../contexts/ProcessingContext'
 // import { useStemSeparation } from '../contexts/StemSeparationContext' // Disabled: not implemented in simple engine
 
 interface AnalysisJob {
@@ -99,7 +100,12 @@ interface HotCueJob {
   completedAt?: number
 }
 
-export function AnalysisProgress() {
+interface AnalysisProgressProps {
+  selectedTracks?: string[]
+}
+
+export function AnalysisProgress({ selectedTracks = [] }: AnalysisProgressProps) {
+  const processing = useProcessing()
   const [activeTab, setActiveTab] = useState<'analysis' | 'grid' | 'jobs'>('analysis')
   const [jobs, setJobs] = useState<AnalysisJob[]>([])
   const [gridJobs, setGridJobs] = useState<GridCalculationJob[]>([])
@@ -110,6 +116,7 @@ export function AnalysisProgress() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showLiveLog, setShowLiveLog] = useState(true)
   const [showMixSuggestions, setShowMixSuggestions] = useState(false)
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   // const stemSeparation = useStemSeparation() // Disabled: not implemented in simple engine
 
@@ -302,6 +309,11 @@ export function AnalysisProgress() {
           } : job
         ))
 
+        // Unregister track from processing
+        if (data.trackId) {
+          processing.unregisterProcessing([data.trackId], 'analysis')
+        }
+
         // Auto-generate mix suggestions if enabled
         if (showMixSuggestions) {
           generateMixSuggestions()
@@ -338,6 +350,50 @@ export function AnalysisProgress() {
     )
   }
 
+  const handleAnalyzeSelected = async () => {
+    if (selectedTracks.length === 0) return
+
+    console.log('Creating analysis jobs for selected tracks:', selectedTracks)
+
+    // Check for conflicts and register tracks
+    const { allowed, blocked } = processing.registerProcessing(selectedTracks, 'analysis')
+
+    if (blocked.length > 0) {
+      const screens = blocked.map(id => processing.getProcessingScreen(id)).filter(Boolean)
+      setConflictMessage(
+        `${blocked.length} track(s) already being processed in ${screens.join(', ')}. Only ${allowed.length} will be analyzed.`
+      )
+      setTimeout(() => setConflictMessage(null), 5000)
+
+      if (allowed.length === 0) {
+        addProgressLogEntry('System', '❌ All selected tracks are already being processed', 'error')
+        return
+      }
+    }
+
+    try {
+      if (window.electronAPI) {
+        const result = await window.electronAPI.createAnalysisJobs(allowed)
+        console.log('Analysis jobs created:', result)
+
+        if (typeof result === 'object' && result && 'success' in result && (result as any).success) {
+          const jobsCreated = (result as any).jobsCreated || allowed.length
+          addProgressLogEntry('System', `✅ Submitted ${allowed.length} tracks to analysis queue (${jobsCreated} jobs created)`, 'success')
+          // Refresh to show new jobs
+          await handleRefresh()
+        } else {
+          addProgressLogEntry('System', '❌ Failed to create analysis jobs', 'error')
+          // Unregister on failure
+          processing.unregisterProcessing(allowed, 'analysis')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create analysis jobs:', error)
+      addProgressLogEntry('System', `❌ Error creating analysis jobs: ${error}`, 'error')
+      // Unregister on error
+      processing.unregisterProcessing(allowed, 'analysis')
+    }
+  }
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -946,12 +1002,23 @@ export function AnalysisProgress() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Analysis & Processing</h2>
-          <p className="text-gray-400">Track analysis, stem separation, and background jobs</p>
+          <p className="text-gray-400">Track analysis, beat grids, hot cues, and background jobs</p>
         </div>
 
         {/* Tab-specific controls */}
         {activeTab === 'analysis' && (
           <div className="flex items-center space-x-3">
+            {selectedTracks.length > 0 && (
+              <button
+                onClick={handleAnalyzeSelected}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-sm font-medium transition-colors"
+                title="Analyze selected tracks for BPM, key, and energy"
+              >
+                <BarChart3 className="h-4 w-4 inline mr-2" />
+                Analyze ({selectedTracks.length})
+              </button>
+            )}
+
             <button
               onClick={() => setShowLiveLog(!showLiveLog)}
               className={clsx(
@@ -959,7 +1026,7 @@ export function AnalysisProgress() {
                 showLiveLog ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'
               )}
             >
-              <BarChart3 className="h-4 w-4 inline mr-2" />
+              <Activity className="h-4 w-4 inline mr-2" />
               {showLiveLog ? 'Hide Log' : 'Show Log'}
             </button>
 
@@ -1068,6 +1135,14 @@ export function AnalysisProgress() {
           </div>
         )}
       </div>
+
+      {/* Conflict Warning */}
+      {conflictMessage && (
+        <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-4 flex items-start space-x-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <p className="text-yellow-200">{conflictMessage}</p>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-700">

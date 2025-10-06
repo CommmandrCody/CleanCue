@@ -15,6 +15,7 @@ import {
   Settings
 } from 'lucide-react'
 import clsx from 'clsx'
+import { DuplicateDetection } from './DuplicateDetection'
 
 interface HealthIssue {
   id: string
@@ -28,6 +29,7 @@ interface HealthIssue {
 }
 
 export function HealthDashboard() {
+  const [activeTab, setActiveTab] = useState<'health' | 'duplicates'>('health')
   const [issues, setIssues] = useState<HealthIssue[]>([])
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null)
   const [selectedIssues, setSelectedIssues] = useState<string[]>([])
@@ -183,7 +185,7 @@ export function HealthDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">DJ Library Health</h2>
+          <h2 className="text-2xl font-bold">Library Health & Duplicates</h2>
           <p className="text-gray-400">Keep your DJ collection clean and performance-ready</p>
         </div>
 
@@ -206,6 +208,34 @@ export function HealthDashboard() {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex space-x-1 bg-gray-800 rounded-lg p-1">
+        <button
+          onClick={() => setActiveTab('health')}
+          className={clsx(
+            'flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            activeTab === 'health'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          )}
+        >
+          Health Issues
+        </button>
+        <button
+          onClick={() => setActiveTab('duplicates')}
+          className={clsx(
+            'flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            activeTab === 'duplicates'
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          )}
+        >
+          Duplicates
+        </button>
+      </div>
+
+      {activeTab === 'health' && (
+      <>
       {/* Health Overview - Clickable Filters */}
       <div className="grid grid-cols-4 gap-4">
         <button
@@ -430,6 +460,12 @@ export function HealthDashboard() {
           )}
         </div>
       </div>
+      </>
+      )}
+
+      {activeTab === 'duplicates' && (
+        <DuplicateDetection />
+      )}
     </div>
   )
 }

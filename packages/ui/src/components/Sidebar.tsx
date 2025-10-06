@@ -1,4 +1,4 @@
-import { Library, Activity, Copy, BarChart3, Scissors, Zap, FileText, Tag } from 'lucide-react'
+import { Library, Activity, FileText, Scissors, Tag, Zap, Music } from 'lucide-react'
 import clsx from 'clsx'
 
 interface SidebarProps {
@@ -9,34 +9,63 @@ interface SidebarProps {
 const menuItems = [
   { id: 'library', label: 'Library', icon: Library },
   { id: 'health', label: 'Health', icon: Activity },
-  { id: 'duplicates', label: 'Duplicates', icon: Copy },
-  { id: 'analysis', label: 'Analysis', icon: BarChart3 },
-  { id: 'filename', label: 'Filename Renaming', icon: FileText },
-  { id: 'metadata', label: 'Metadata Tagging', icon: Tag },
+  { id: 'filename', label: 'Filename Management', icon: FileText },
   { id: 'stems', label: 'Stem Separation', icon: Scissors },
-  { id: 'smartmix', label: 'Smart Mix', icon: Zap },
+  { id: 'metadata', label: 'Metadata Tagging', icon: Tag },
+  { id: 'smartmix', label: 'Smart Mix & Mashup', icon: Zap },
+  { id: 'djdeck', label: 'DJ Deck', icon: Music, disabled: true, comingSoon: true },
 ]
+
+const menuItemsWithMeta = menuItems.map(item => ({
+  ...item,
+  disabled: item.disabled || false,
+  comingSoon: item.comingSoon || false
+}))
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
   return (
     <aside className="w-64 bg-gray-800 border-r border-gray-700 p-4">
       <nav className="space-y-2">
-        {menuItems.map((item) => {
+        {menuItemsWithMeta.map((item) => {
           const Icon = item.icon
+          const isLibrary = item.id === 'library'
+
           return (
-            <button
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={clsx(
-                'w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                currentView === item.id
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            <div key={item.id}>
+              <button
+                onClick={() => !item.disabled && onViewChange(item.id)}
+                disabled={item.disabled}
+                className={clsx(
+                  'w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                  item.disabled
+                    ? 'text-gray-600 cursor-not-allowed'
+                    : currentView === item.id
+                    ? isLibrary
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-primary-600 text-white'
+                    : isLibrary
+                    ? 'text-blue-300 hover:bg-blue-900/30 hover:text-blue-200'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                )}
+              >
+                <div className="flex items-center space-x-3">
+                  <Icon className="h-5 w-5" />
+                  <span>{item.label}</span>
+                </div>
+                {item.comingSoon && (
+                  <span className="text-xs bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded">Soon</span>
+                )}
+              </button>
+
+              {/* Separator after Library */}
+              {isLibrary && (
+                <div className="my-3 border-t border-gray-600">
+                  <div className="mt-3 px-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    Processing
+                  </div>
+                </div>
               )}
-            >
-              <Icon className="h-5 w-5" />
-              <span>{item.label}</span>
-            </button>
+            </div>
           )
         })}
       </nav>

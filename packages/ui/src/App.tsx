@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { LibraryView } from './components/LibraryView'
 import { ScanDialog } from './components/ScanDialog'
 import { HealthDashboard } from './components/HealthDashboard'
-import { DuplicateDetection } from './components/DuplicateDetection'
-import { AnalysisProgress } from './components/AnalysisProgress'
 import { StemSeparation } from './components/StemSeparation'
 import { SmartMix } from './components/SmartMix'
 import { FilenameRenaming } from './components/FilenameRenaming'
@@ -14,10 +12,11 @@ import { Settings } from './components/Settings'
 import { LibraryImport } from './components/LibraryImport'
 import { AudioPlayer } from './components/AudioPlayer'
 import { LogViewer } from './components/LogViewer'
+import { ProcessingProvider } from './contexts/ProcessingContext'
 // import { StemQueueDialog } from './components/StemQueueDialog' // Disabled: not implemented in simple engine
 // import { StemSeparationProvider } from './contexts/StemSeparationContext' // Disabled: not implemented in simple engine
 
-type ViewType = 'library' | 'health' | 'duplicates' | 'analysis' | 'filename' | 'metadata' | 'stems' | 'smartmix'
+type ViewType = 'library' | 'health' | 'stems' | 'filename' | 'metadata' | 'smartmix'
 
 interface Track {
   id: string
@@ -122,9 +121,9 @@ function AppContent() {
       }
 
       // Number keys for view switching
-      if (e.key >= '1' && e.key <= '8' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key >= '1' && e.key <= '6' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        const views: ViewType[] = ['library', 'health', 'duplicates', 'analysis', 'filename', 'metadata', 'stems', 'smartmix']
+        const views: ViewType[] = ['library', 'health', 'filename', 'stems', 'metadata', 'smartmix']
         const viewIndex = parseInt(e.key) - 1
         if (views[viewIndex]) {
           setCurrentView(views[viewIndex])
@@ -167,23 +166,19 @@ function AppContent() {
 
     switch (currentView) {
       case 'library':
-        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} selectedTracks={selectedTracks} />
       case 'health':
         return <HealthDashboard />
-      case 'duplicates':
-        return <DuplicateDetection />
-      case 'analysis':
-        return <AnalysisProgress />
-      case 'filename':
-        return <FilenameRenaming isOpen={true} onClose={() => setCurrentView('library')} selectedTracks={selectedTracks} />
-      case 'metadata':
-        return <MetadataTagging isOpen={true} onClose={() => setCurrentView('library')} selectedTracks={selectedTracks} />
       case 'stems':
-        return <StemSeparation />
+        return <StemSeparation selectedTracks={selectedTracks} />
+      case 'filename':
+        return <FilenameRenaming selectedTracks={selectedTracks} />
+      case 'metadata':
+        return <MetadataTagging selectedTracks={selectedTracks} />
       case 'smartmix':
         return <SmartMix />
       default:
-        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} />
+        return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} selectedTracks={selectedTracks} />
     }
   }
 
@@ -193,7 +188,6 @@ function AppContent() {
         onScan={() => setShowScanDialog(true)}
         onSettings={() => setShowSettings(true)}
         onImport={() => setShowImport(true)}
-        onStemQueue={() => setShowStemQueue(true)}
         showLogViewer={showLogViewer}
         onToggleLogViewer={() => setShowLogViewer(!showLogViewer)}
       />
@@ -314,15 +308,15 @@ function AppContent() {
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">4</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Filename renaming</span>
+                    <span className="text-gray-300">Stem separation</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">5</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Metadata tagging</span>
+                    <span className="text-gray-300">Filename renaming</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">6</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Stem separation</span>
+                    <span className="text-gray-300">Metadata tagging</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">7</kbd>
                   </div>
                   <div className="flex justify-between">
@@ -365,7 +359,11 @@ function AppContent() {
 }
 
 function App() {
-  return <AppContent />
+  return (
+    <ProcessingProvider>
+      <AppContent />
+    </ProcessingProvider>
+  )
 }
 
 export default App

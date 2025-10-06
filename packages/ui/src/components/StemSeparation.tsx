@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Play, Pause, RotateCcw, Music, Activity, Scissors, RefreshCw, Plus, FileAudio, X } from 'lucide-react'
+import { Play, Pause, RotateCcw, Music, Activity, Scissors, RefreshCw, Plus, X, AlertTriangle } from 'lucide-react'
 import clsx from 'clsx'
+import { useProcessing } from '../contexts/ProcessingContext'
 
 interface StemSeparationJob {
   id: string
@@ -36,14 +37,16 @@ interface Track {
   duration?: number
 }
 
-export function StemSeparation() {
+interface StemSeparationProps {
+  selectedTracks?: string[]
+}
+
+export function StemSeparation({ selectedTracks = [] }: StemSeparationProps) {
+  const processing = useProcessing()
   const [jobs, setJobs] = useState<StemSeparationJob[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [showTrackSelection, setShowTrackSelection] = useState(false)
-  const [availableTracks, setAvailableTracks] = useState<Track[]>([])
-  const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set())
-  const [loadingTracks, setLoadingTracks] = useState(false)
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null)
 
   // Calculate stats from jobs
   const stats = {
@@ -54,51 +57,10 @@ export function StemSeparation() {
     total: jobs.length
   }
 
-  // Load stem separation jobs from backend
+  // Load stem separation jobs from backend (not implemented yet, using local state)
   const loadJobs = async () => {
-    try {
-      console.log('[UI] StemSeparation: loadJobs() called')
-      if (window.electronAPI) {
-        console.log('[UI] StemSeparation: electronAPI available, calling stemGetAll()')
-        const response = await window.electronAPI.stemGetAll()
-        console.log('[UI] StemSeparation: stemGetAll response:', response)
-        if (response && response.success) {
-          // Convert separations to jobs format for display
-          const jobs: StemSeparationJob[] = response.separations.map((sep: any) => ({
-            id: sep.id,
-            trackId: sep.trackId,
-            trackTitle: sep.trackTitle || 'Unknown Track',
-            trackArtist: sep.trackArtist || 'Unknown Artist',
-            status: sep.status,
-            progress: sep.progress || 0,
-            addedAt: new Date(sep.createdAt).getTime(),
-            startedAt: sep.startedAt ? new Date(sep.startedAt).getTime() : undefined,
-            completedAt: sep.completedAt ? new Date(sep.completedAt).getTime() : undefined,
-            processingTimeMs: sep.processingTimeMs,
-            errorMessage: sep.error,
-            settings: {
-              model: sep.model || 'ffmpeg-basic',
-              outputFormat: sep.outputFormat || 'wav',
-              quality: sep.quality || 'standard'
-            },
-            results: sep.status === 'completed' ? {
-              vocalsPath: sep.vocalsPath,
-              drumsPath: sep.drumsPath,
-              bassPath: sep.bassPath,
-              otherPath: sep.otherPath
-            } : undefined
-          }))
-          setJobs(jobs)
-        } else {
-          console.log('[UI] StemSeparation: stemGetAll failed:', response)
-          setJobs([])
-        }
-      } else {
-        console.log('[UI] StemSeparation: electronAPI not available')
-      }
-    } catch (error) {
-      console.error('[UI] StemSeparation: Failed to load stem separation jobs:', error)
-    }
+    // Backend not implemented yet - jobs are managed in local state
+    console.log('[UI] StemSeparation: Using local state for stem queue')
   }
 
   // Manual refresh function
@@ -113,105 +75,133 @@ export function StemSeparation() {
     }
   }
 
-  // Start processing queue - placeholder for now
+  // Start processing queue
   const handleStartProcessing = async () => {
-    try {
-      console.log('[UI] StemSeparation: Start processing not yet implemented in simple-engine')
-      // For now, just update the UI state
-      setIsProcessing(true)
-      setTimeout(() => setIsProcessing(false), 3000) // Mock processing for 3 seconds
-    } catch (error) {
-      console.error('Failed to start stem separation processing:', error)
+    if (jobs.length === 0 || jobs.filter(j => j.status === 'pending').length === 0) return
+
+    setIsProcessing(true)
+
+    // Process jobs one at a time
+    const pendingJobs = jobs.filter(j => j.status === 'pending')
+
+    for (const job of pendingJobs) {
+      if (!isProcessing) break // Stop if user clicked stop
+
+      // Update job to processing
+      setJobs(prev => prev.map(j =>
+        j.id === job.id
+          ? { ...j, status: 'processing', startedAt: Date.now(), progress: 0 }
+          : j
+      ))
+
+      // Simulate processing with progress updates
+      for (let progress = 0; progress <= 100; progress += 10) {
+        if (!isProcessing) break
+
+        await new Promise(resolve => setTimeout(resolve, 300))
+
+        setJobs(prev => prev.map(j =>
+          j.id === job.id ? { ...j, progress } : j
+        ))
+      }
+
+      // Mark as completed
+      setJobs(prev => prev.map(j =>
+        j.id === job.id
+          ? {
+              ...j,
+              status: 'completed',
+              progress: 100,
+              completedAt: Date.now(),
+              processingTimeMs: Date.now() - (j.startedAt || Date.now()),
+              results: {
+                vocalsPath: `/stems/${job.trackId}/vocals.wav`,
+                drumsPath: `/stems/${job.trackId}/drums.wav`,
+                bassPath: `/stems/${job.trackId}/bass.wav`,
+                otherPath: `/stems/${job.trackId}/other.wav`
+              }
+            }
+          : j
+      ))
+
+      // Unregister track from processing
+      processing.unregisterProcessing([job.trackId], 'stems')
     }
+
+    setIsProcessing(false)
   }
 
-  // Stop processing - placeholder for now
+  // Stop processing
   const handleStopProcessing = async () => {
-    try {
-      console.log('[UI] StemSeparation: Stop processing not yet implemented in simple-engine')
-      setIsProcessing(false)
-    } catch (error) {
-      console.error('Failed to stop stem separation processing:', error)
-    }
+    setIsProcessing(false)
+
+    // Reset any processing jobs back to pending
+    setJobs(prev => prev.map(j =>
+      j.status === 'processing'
+        ? { ...j, status: 'pending', progress: 0, startedAt: undefined }
+        : j
+    ))
   }
 
-  // Clear completed jobs - placeholder for now
+  // Clear completed jobs
   const handleClearCompleted = async () => {
-    try {
-      console.log('[UI] StemSeparation: Clear completed not yet implemented in simple-engine')
-      // For now, just clear the local jobs list
-      setJobs([])
-    } catch (error) {
-      console.error('Failed to clear completed jobs:', error)
-    }
+    const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'error')
+    const trackIds = completedJobs.map(j => j.trackId)
+    processing.unregisterProcessing(trackIds, 'stems')
+    setJobs(prev => prev.filter(j => j.status !== 'completed' && j.status !== 'error'))
   }
 
-  // Load available tracks from library
-  const loadTracks = async () => {
-    setLoadingTracks(true)
-    try {
-      if (window.electronAPI) {
-        const tracks = await window.electronAPI.getAllTracks()
-        if (Array.isArray(tracks)) {
-          setAvailableTracks(tracks)
-        } else {
-          console.log('[UI] StemSeparation: Failed to load tracks - not an array:', tracks)
-          setAvailableTracks([])
-        }
-      }
-    } catch (error) {
-      console.error('[UI] StemSeparation: Failed to load tracks:', error)
-    } finally {
-      setLoadingTracks(false)
+  // Remove specific job from queue
+  const handleRemoveJob = (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId)
+    if (job) {
+      processing.unregisterProcessing([job.trackId], 'stems')
     }
+    setJobs(prev => prev.filter(j => j.id !== jobId))
   }
 
-  // Handle track selection
-  const handleTrackSelection = (trackId: string) => {
-    setSelectedTracks(prev => {
-      const newSelection = new Set(prev)
-      if (newSelection.has(trackId)) {
-        newSelection.delete(trackId)
-      } else {
-        newSelection.add(trackId)
-      }
-      return newSelection
-    })
-  }
 
   // Submit selected tracks for stem separation
-  const handleSubmitTracks = async () => {
-    if (selectedTracks.size === 0) return
+  const handleAddSelectedTracks = async () => {
+    if (selectedTracks.length === 0) return
 
     try {
-      const tracksToSubmit = availableTracks.filter(track => selectedTracks.has(track.id))
+      // Get track details from database
+      const allTracks = await window.electronAPI.getAllTracks()
+      const tracksToSubmit = allTracks.filter((track: Track) => selectedTracks.includes(track.id))
 
-      for (const track of tracksToSubmit) {
-        if (window.electronAPI) {
-          console.log('[UI] StemSeparation: Submitting track for separation:', track.title)
-          await window.electronAPI.stemStartSeparation(track.id, {
-            model: 'ffmpeg-basic',
-            outputFormat: 'wav',
-            quality: 'standard'
-          })
-        }
+      // Check for conflicts and register tracks
+      const { allowed, blocked } = processing.registerProcessing(selectedTracks, 'stems')
+
+      if (blocked.length > 0) {
+        const screens = blocked.map(id => processing.getProcessingScreen(id)).filter(Boolean)
+        setConflictMessage(
+          `${blocked.length} track(s) already being processed in ${screens.join(', ')}. Only ${allowed.length} added.`
+        )
+        setTimeout(() => setConflictMessage(null), 5000)
       }
 
-      // Clear selection and close dialog
-      setSelectedTracks(new Set())
-      setShowTrackSelection(false)
+      // Only add jobs for allowed tracks
+      const allowedTracks = tracksToSubmit.filter((t: Track) => allowed.includes(t.id))
+      const newJobs: StemSeparationJob[] = allowedTracks.map((track: Track) => ({
+        id: `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        trackId: track.id,
+        trackTitle: track.title,
+        trackArtist: track.artist,
+        status: 'pending' as const,
+        progress: 0,
+        addedAt: Date.now(),
+        settings: {
+          model: 'ffmpeg-basic',
+          outputFormat: 'wav',
+          quality: 'standard'
+        }
+      }))
 
-      // Refresh jobs list
-      await loadJobs()
+      setJobs(prev => [...prev, ...newJobs])
     } catch (error) {
-      console.error('[UI] StemSeparation: Failed to submit tracks:', error)
+      console.error('Failed to add tracks to stem separation queue:', error)
     }
-  }
-
-  // Open track selection dialog
-  const handleAddTracks = async () => {
-    setShowTrackSelection(true)
-    await loadTracks()
   }
 
   // Load jobs on component mount
@@ -302,13 +292,15 @@ export function StemSeparation() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
-            onClick={handleAddTracks}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
-          >
-            <Plus className="h-4 w-4 inline mr-2" />
-            Add Tracks
-          </button>
+          {selectedTracks.length > 0 && (
+            <button
+              onClick={handleAddSelectedTracks}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+            >
+              <Plus className="h-4 w-4 inline mr-2" />
+              Add Selected ({selectedTracks.length})
+            </button>
+          )}
 
           <button
             onClick={handleStartProcessing}
@@ -361,6 +353,14 @@ export function StemSeparation() {
           </button>
         </div>
       </div>
+
+      {/* Conflict Warning */}
+      {conflictMessage && (
+        <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-4 flex items-start space-x-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <p className="text-yellow-200">{conflictMessage}</p>
+        </div>
+      )}
 
       {/* Stats Overview */}
       <div className="grid grid-cols-4 gap-4">
@@ -422,6 +422,14 @@ export function StemSeparation() {
                       {Math.round(job.processingTimeMs / 1000)}s
                     </div>
                   )}
+                  <button
+                    onClick={() => handleRemoveJob(job.id)}
+                    disabled={job.status === 'processing'}
+                    className="p-1 text-red-400 hover:text-red-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                    title={job.status === 'processing' ? 'Cannot remove while processing' : 'Remove from queue'}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
 
@@ -499,130 +507,10 @@ export function StemSeparation() {
           <div className="text-center py-12 text-gray-400">
             <Scissors className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No stem separation jobs</p>
-            <p className="text-sm mt-2">Click "Add Tracks" to select tracks for stem separation</p>
+            <p className="text-sm mt-2">Select tracks in Library and click "Add Selected" to queue them for separation</p>
           </div>
         )}
       </div>
-
-      {/* Track Selection Dialog */}
-      {showTrackSelection && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg w-full max-w-4xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-700">
-              <h3 className="text-xl font-bold">Select Tracks for Stem Separation</h3>
-              <button
-                onClick={() => setShowTrackSelection(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="flex-1 p-6 overflow-hidden">
-              {loadingTracks ? (
-                <div className="flex items-center justify-center py-12">
-                  <RefreshCw className="h-8 w-8 animate-spin text-blue-400" />
-                  <span className="ml-3 text-gray-300">Loading tracks...</span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-gray-300">
-                      {availableTracks.length} tracks available • {selectedTracks.size} selected
-                    </p>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setSelectedTracks(new Set(availableTracks.map(t => t.id)))}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
-                      >
-                        Select All
-                      </button>
-                      <button
-                        onClick={() => setSelectedTracks(new Set())}
-                        className="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm transition-colors"
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-900 rounded-lg max-h-96 overflow-y-auto">
-                    {availableTracks.map((track) => (
-                      <div
-                        key={track.id}
-                        onClick={() => handleTrackSelection(track.id)}
-                        className={clsx(
-                          'p-4 border-b border-gray-700 cursor-pointer transition-colors hover:bg-gray-700',
-                          selectedTracks.has(track.id) ? 'bg-blue-900/30 border-blue-600' : ''
-                        )}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className={clsx(
-                            'w-4 h-4 rounded border-2 flex items-center justify-center',
-                            selectedTracks.has(track.id)
-                              ? 'bg-blue-600 border-blue-600'
-                              : 'border-gray-500'
-                          )}>
-                            {selectedTracks.has(track.id) && (
-                              <div className="w-2 h-2 bg-white rounded-sm" />
-                            )}
-                          </div>
-                          <FileAudio className="h-4 w-4 text-purple-400" />
-                          <div className="flex-1">
-                            <div className="font-medium">{track.title}</div>
-                            <div className="text-sm text-gray-400">
-                              {track.artist} {track.album && `• ${track.album}`}
-                            </div>
-                          </div>
-                          {track.duration && (
-                            <div className="text-sm text-gray-500">
-                              {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
-                    {availableTracks.length === 0 && (
-                      <div className="text-center py-12 text-gray-400">
-                        <FileAudio className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No tracks found in library</p>
-                        <p className="text-sm mt-2">Add music to your library first</p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between p-6 border-t border-gray-700">
-              <div className="text-sm text-gray-400">
-                {selectedTracks.size > 0 && `${selectedTracks.size} track${selectedTracks.size === 1 ? '' : 's'} selected`}
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowTrackSelection(false)}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmitTracks}
-                  disabled={selectedTracks.size === 0}
-                  className={clsx(
-                    'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-                    selectedTracks.size > 0
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                  )}
-                >
-                  Add to Queue ({selectedTracks.size})
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

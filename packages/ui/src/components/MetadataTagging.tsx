@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Music, Database, Globe, FileText, X, RefreshCw, Save, ArrowRight, Sparkles } from 'lucide-react'
+import { Music, Database, Globe, FileText, RefreshCw, Save, ArrowRight, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 
 interface ExistingTags {
@@ -58,12 +58,10 @@ interface TrackTaggingInfo {
 }
 
 interface MetadataTaggingProps {
-  isOpen: boolean
-  onClose: () => void
   selectedTracks?: string[]
 }
 
-export function MetadataTagging({ isOpen, onClose, selectedTracks = [] }: MetadataTaggingProps) {
+export function MetadataTagging({ selectedTracks = [] }: MetadataTaggingProps) {
   const [tracks, setTracks] = useState<TrackTaggingInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -74,10 +72,8 @@ export function MetadataTagging({ isOpen, onClose, selectedTracks = [] }: Metada
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
-    if (isOpen && selectedTracks.length > 0) {
-      loadTrackMetadata()
-    }
-  }, [isOpen, selectedTracks])
+    loadTrackMetadata()
+  }, [selectedTracks])
 
   const parseFilename = (filename: string): FilenameData => {
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').trim()
@@ -389,29 +385,23 @@ export function MetadataTagging({ isOpen, onClose, selectedTracks = [] }: Metada
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg w-full max-w-7xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <div>
-            <h2 className="text-xl font-bold">Metadata Tagging</h2>
-            <p className="text-gray-400">
-              {selectedTracks.length > 0
-                ? `Working with ${selectedTracks.length} selected tracks`
-                : 'Showing first 50 tracks (select tracks in library for specific files)'}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <X className="h-5 w-5" />
-          </button>
+    <div className="space-y-6 h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Metadata Tagging</h2>
+          <p className="text-gray-400">
+            {selectedTracks.length > 0
+              ? `Working with ${selectedTracks.length} selected tracks`
+              : 'Showing first 50 tracks (select tracks in library for specific files)'}
+          </p>
         </div>
+      </div>
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Configuration Panel */}
-          <div className="w-1/3 p-6 border-r border-gray-700 overflow-y-auto">
+      <div className="flex-1 flex overflow-hidden bg-gray-800 rounded-lg">
+        {/* Configuration Panel */}
+        <div className="w-1/3 p-6 border-r border-gray-700 overflow-y-auto">
             <h3 className="font-medium mb-4">Tagging Options</h3>
 
             {/* Auto-select best source */}
@@ -735,7 +725,6 @@ export function MetadataTagging({ isOpen, onClose, selectedTracks = [] }: Metada
                 ))}
               </div>
             )}
-          </div>
         </div>
       </div>
     </div>

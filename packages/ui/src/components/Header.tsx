@@ -1,4 +1,4 @@
-import { Disc, Search, Settings, FolderPlus, Eye, EyeOff, ChevronDown, Music, Zap } from 'lucide-react'
+import { Disc, Search, Settings, FolderPlus, Eye, EyeOff, Music, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 // import { StemQueueIndicator } from './StemQueueIndicator' // Disabled: not implemented in simple engine
 
@@ -6,14 +6,12 @@ interface HeaderProps {
   onScan: () => void
   onSettings: () => void
   onImport: () => void
-  onStemQueue?: () => void
   showLogViewer?: boolean
   onToggleLogViewer?: () => void
 }
 
-export function Header({ onScan, onSettings, onImport, onStemQueue, showLogViewer, onToggleLogViewer }: HeaderProps) {
+export function Header({ onScan, onSettings, onImport, showLogViewer, onToggleLogViewer }: HeaderProps) {
   const [showLibraryMenu, setShowLibraryMenu] = useState(false)
-  const [showToolsMenu, setShowToolsMenu] = useState(false)
 
   return (
     <header className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 py-3 shadow-lg drag-region pt-8 px-6">
@@ -64,41 +62,16 @@ export function Header({ onScan, onSettings, onImport, onStemQueue, showLogViewe
             )}
           </div>
 
-          {/* DJ Tools Dropdown */}
-          <div className="relative">
+          {/* Activity Log Toggle */}
+          {onToggleLogViewer && (
             <button
-              onClick={() => setShowToolsMenu(!showToolsMenu)}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg no-drag"
+              onClick={onToggleLogViewer}
+              className="p-2 text-gray-400 hover:text-blue-400 transition-all duration-200 hover:bg-gray-700/50 rounded-lg no-drag"
+              title={showLogViewer ? 'Hide Activity Log' : 'Show Activity Log'}
             >
-              <Zap className="h-4 w-4 mr-2" />
-              DJ Tools
-              <ChevronDown className="h-4 w-4 ml-2" />
+              {showLogViewer ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
-
-            {showToolsMenu && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
-                {onStemQueue && (
-                  <button
-                    onClick={() => { onStemQueue(); setShowToolsMenu(false) }}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-medium transition-colors flex items-center"
-                  >
-                    <Music className="h-4 w-4 mr-3 text-purple-400" />
-                    STEM Separation
-                  </button>
-                )}
-                {onToggleLogViewer && (
-                  <button
-                    onClick={() => { onToggleLogViewer(); setShowToolsMenu(false) }}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-700 rounded-b-lg text-sm font-medium transition-colors flex items-center"
-                  >
-                    {showLogViewer ? <EyeOff className="h-4 w-4 mr-3 text-orange-400" /> : <Eye className="h-4 w-4 mr-3 text-green-400" />}
-                    {showLogViewer ? 'Hide' : 'Show'} Activity Log
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
+          )}
 
           {/* Settings - Single Clean Button */}
           <button

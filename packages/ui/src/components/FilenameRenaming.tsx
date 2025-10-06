@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { FileText, AlertTriangle, CheckCircle, X, RefreshCw, Download } from 'lucide-react'
+import { FileText, AlertTriangle, CheckCircle, RefreshCw, Download } from 'lucide-react'
 import clsx from 'clsx'
 import { FilenameHealthChecker, type FilenameHealthIssue as FilenameIssue } from '@cleancue/shared'
+import { useProcessing } from '../contexts/ProcessingContext'
 
 interface TrackFilenameHealth {
   id: string
@@ -16,17 +17,17 @@ interface TrackFilenameHealth {
 }
 
 interface FilenameRenamingProps {
-  isOpen: boolean
-  onClose: () => void
   selectedTracks?: string[]
 }
 
-export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: FilenameRenamingProps) {
+export function FilenameRenaming({ selectedTracks = [] }: FilenameRenamingProps) {
+  const processing = useProcessing()
   const [tracks, setTracks] = useState<TrackFilenameHealth[]>([])
   const [analyzing, setAnalyzing] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [namingTemplate, setNamingTemplate] = useState('{artist} - {title} [{bpm}] ({key})')
   const [selectedForRename, setSelectedForRename] = useState<string[]>([])
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null)
 
   const templates = {
     BASIC: '{artist} - {title}',
@@ -38,10 +39,8 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
   }
 
   useEffect(() => {
-    if (isOpen && selectedTracks.length > 0) {
-      analyzeFilenames()
-    }
-  }, [isOpen, selectedTracks])
+    analyzeFilenames()
+  }, [selectedTracks])
 
   const analyzeFilenames = async () => {
     setAnalyzing(true)
@@ -144,11 +143,24 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
   const handleRename = async () => {
     if (selectedForRename.length === 0) return
 
+    // Check for conflicts and register tracks
+    const { allowed, blocked } = processing.registerProcessing(selectedForRename, 'filename')
+
+    if (blocked.length > 0) {
+      const screens = blocked.map(id => processing.getProcessingScreen(id)).filter(Boolean)
+      setConflictMessage(
+        `${blocked.length} track(s) already being processed in ${screens.join(', ')}. Only ${allowed.length} will be renamed.`
+      )
+      setTimeout(() => setConflictMessage(null), 5000)
+
+      if (allowed.length === 0) return
+    }
+
     setRenaming(true)
     const errors: string[] = []
 
     try {
-      const tracksToRename = tracks.filter(t => selectedForRename.includes(t.id))
+      const tracksToRename = tracks.filter(t => allowed.includes(t.id))
 
       for (const track of tracksToRename) {
         try {
@@ -159,6 +171,9 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
         } catch (error) {
           errors.push(`${track.currentFilename}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
+
+        // Unregister track after processing (success or failure)
+        processing.unregisterProcessing([track.id], 'filename')
       }
 
       if (errors.length > 0) {
@@ -175,6 +190,8 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
     } catch (error) {
       console.error('Failed to rename files:', error)
       alert('Failed to rename files: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      // Unregister all on error
+      processing.unregisterProcessing(allowed, 'filename')
     } finally {
       setRenaming(false)
     }
@@ -221,27 +238,47 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
     return 'text-red-400'
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg w-full max-w-7xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <div>
-            <h2 className="text-xl font-bold">Filename Health & Renaming</h2>
-            <p className="text-gray-400">
-              Analyze and fix problematic filenames for DJ software compatibility
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <X className="h-5 w-5" />
+    <div className="space-y-6 h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Filename Management</h2>
+          <p className="text-gray-400">
+            {selectedTracks.length > 0
+              ? `Working with ${selectedTracks.length} selected tracks`
+              : 'Analyze and fix problematic filenames for DJ software compatibility'}
+          </p>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={analyzeFilenames}
+            disabled={analyzing}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+          >
+            {analyzing ? 'Analyzing...' : 'Analyze Filenames'}
+          </button>
+          <button
+            onClick={handleRename}
+            disabled={renaming || selectedForRename.length === 0}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+          >
+            {renaming ? 'Renaming...' : `Rename Selected (${selectedForRename.length})`}
           </button>
         </div>
+      </div>
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Configuration Panel */}
-          <div className="w-1/3 p-6 border-r border-gray-700 overflow-y-auto">
+      {/* Conflict Warning */}
+      {conflictMessage && (
+        <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-4 flex items-start space-x-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <p className="text-yellow-200">{conflictMessage}</p>
+        </div>
+      )}
+
+      <div className="flex-1 flex overflow-hidden bg-gray-800 rounded-lg">
+        {/* Configuration Panel */}
+        <div className="w-1/3 p-6 border-r border-gray-700 overflow-y-auto">
             <h3 className="font-medium mb-4">Naming Template</h3>
 
             {/* Template Selection */}
@@ -438,6 +475,5 @@ export function FilenameRenaming({ isOpen, onClose, selectedTracks = [] }: Filen
           </div>
         </div>
       </div>
-    </div>
   )
 }
