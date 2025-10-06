@@ -4,7 +4,7 @@
 
 CleanCue is a comprehensive DJ library management tool that provides professional-grade audio analysis and normalization, helping DJs organize and prepare their music collections for seamless mixing across all major DJ software platforms.
 
-> **🚀 v0.2.4 - Major Release**: Professional analysis engines, EBU R128 normalization, and simplified architecture!
+> **🚀 v0.3.0 - Enhanced Track Processing**: Smart conflict prevention, persistent selections, and unified workflow across all processing screens!
 
 ## ✨ Key Features
 
@@ -70,22 +70,22 @@ CleanCue is a comprehensive DJ library management tool that provides professiona
 
 #### macOS
 1. **Download**:
-   - [Intel Macs](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4.dmg) (120 MB)
-   - [Apple Silicon](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-arm64.dmg) (120 MB)
+   - [Intel Macs](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.3.0.dmg) (124 MB)
+   - [Apple Silicon](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.3.0-arm64.dmg) (124 MB)
 2. **Install**: Open the DMG and drag CleanCue to Applications
 3. **Launch**: Open CleanCue and add your music folders
 
 #### Windows
 1. **Download**:
-   - [Installer](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-x64.exe) (99 MB)
-   - [Portable](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.2.4-x64-Portable.exe) (98 MB)
+   - [Installer](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.3.0-x64.exe) (94 MB)
+   - [Portable](https://github.com/CommmandrCody/CleanCue/releases/latest/download/CleanCue-0.3.0-x64-Portable.exe) (94 MB)
 2. **Install**: Run installer or extract portable version
 3. **Launch**: Open CleanCue and add your music folders
 
 #### Linux
 1. **Download**:
-   - [AppImage](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.2.4-x86_64.AppImage) (126 MB)
-   - [Debian Package](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.2.4-amd64.deb) (82 MB)
+   - [AppImage](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.3.0-x86_64.AppImage) (120 MB)
+   - [Debian Package](https://github.com/CommmandrCody/CleanCue/releases/latest/download/cleancue-0.3.0-amd64.deb) (79 MB)
 2. **Install**: Make AppImage executable (`chmod +x`) or install deb package (`sudo dpkg -i`)
 3. **Launch**: Run AppImage or launch from applications menu
 
