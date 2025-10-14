@@ -567,6 +567,23 @@ class CleanCueApp {
       shell.showItemInFolder(fullPath)
     })
 
+    // Handle appending to log file
+    ipcMain.handle('append-log', async (_, filename: string, content: string) => {
+      const fs = require('fs').promises
+      const path = require('path')
+      const { app } = require('electron')
+
+      const logPath = path.join(app.getPath('temp'), filename)
+
+      try {
+        await fs.appendFile(logPath, content, 'utf8')
+        return { success: true, path: logPath }
+      } catch (error) {
+        console.error('Failed to append to log:', error)
+        return { success: false, error: String(error) }
+      }
+    })
+
     // Handle engine operations (scan, analyze, export)
     let scanInProgress = false
     ipcMain.handle('engine-scan', async (_, folderPath: string, options?: any) => {

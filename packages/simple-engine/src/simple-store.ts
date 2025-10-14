@@ -139,6 +139,13 @@ export interface Track {
   camelotKey?: string;
   energy?: number; // 0-1 scale
 
+  // Waveform data (pre-rendered frequency-analyzed) - Professional quality like Serato/Rekordbox
+  waveformData?: {
+    low: number[];   // Bass frequencies (20-250 Hz) - kicks, bass - rendered in red/orange
+    mid: number[];   // Mid frequencies (250-4000 Hz) - vocals, snares - rendered in yellow/pink
+    high: number[];  // High frequencies (4000-20000 Hz) - hi-hats, cymbals - rendered in blue/purple
+  };
+
   // File properties
   size: number;
   format: string;

@@ -7,6 +7,7 @@
 
 export { SimpleStore } from './simple-store';
 export { UIService } from './ui-service';
+export { WaveformGenerator } from './waveform-generator';
 
 // Maintain compatibility with existing UI code
 export { UIService as CleanCueEngine } from './ui-service';

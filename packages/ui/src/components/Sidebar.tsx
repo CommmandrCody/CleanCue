@@ -8,18 +8,19 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'library', label: 'Library', icon: Library },
+  { id: 'analysis', label: 'Audio Analysis', icon: Activity },
   { id: 'health', label: 'Health', icon: Activity },
   { id: 'filename', label: 'Filename Management', icon: FileText },
   { id: 'stems', label: 'Stem Separation', icon: Scissors },
   { id: 'metadata', label: 'Metadata Tagging', icon: Tag },
   { id: 'smartmix', label: 'Smart Mix & Mashup', icon: Zap },
-  { id: 'djdeck', label: 'DJ Deck', icon: Music, disabled: true, comingSoon: true },
+  { id: 'djdeck', label: 'DJ Deck', icon: Music },
 ]
 
 const menuItemsWithMeta = menuItems.map(item => ({
   ...item,
-  disabled: item.disabled || false,
-  comingSoon: item.comingSoon || false
+  disabled: ('disabled' in item ? item.disabled : false) as boolean,
+  comingSoon: ('comingSoon' in item ? item.comingSoon : false) as boolean
 }))
 
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {

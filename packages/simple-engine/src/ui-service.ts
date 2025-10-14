@@ -11,6 +11,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { EngineDJExporter, type EngineDJExportOptions } from './exporters/engine-dj-exporter';
+import { WaveformGenerator } from './waveform-generator';
 
 // Professional audio analysis with essentia.js (optional)
 let Essentia: any = null;
@@ -1190,6 +1191,17 @@ export class UIService extends EventEmitter {
       }
     });
 
+    // Generate frequency-analyzed waveform data for DJ deck visualization (like Serato/Rekordbox)
+    try {
+      console.log(`📊 Generating professional frequency-analyzed waveform for: ${filename}`);
+      const waveformData = await WaveformGenerator.generateWaveform(filePath);
+      (trackData as any).waveformData = waveformData;
+      console.log(`✅ Waveform generated: ${waveformData.low.length} samples (3-band frequency analysis: low/mid/high)`);
+    } catch (error) {
+      console.warn(`⚠️ Waveform generation failed for ${filename}:`, error instanceof Error ? error.message : error);
+      // Continue without waveform data - it's not critical
+    }
+
     return await this.store.addTrack(trackData);
   }
 
@@ -2171,5 +2183,76 @@ export class UIService extends EventEmitter {
 
   async abortAllAnalysisJobs(): Promise<void> {
     await this.abortAllJobs();
+  }
+
+  /**
+   * Generate waveforms for all tracks that don't have them yet
+   * This is useful for regenerating waveforms for existing tracks
+   */
+  async generateMissingWaveforms(): Promise<{
+    total: number;
+    generated: number;
+    failed: number;
+    skipped: number;
+    errors: string[];
+  }> {
+    const result = {
+      total: 0,
+      generated: 0,
+      failed: 0,
+      skipped: 0,
+      errors: [] as string[]
+    };
+
+    console.log('📊 Scanning library for tracks without waveforms...');
+
+    const allTracks = await this.getAllTracks();
+    const tracksNeedingWaveforms = allTracks.filter(track => !track.waveformData);
+
+    result.total = tracksNeedingWaveforms.length;
+
+    if (result.total === 0) {
+      console.log('✅ All tracks already have waveforms!');
+      return result;
+    }
+
+    console.log(`📊 Found ${result.total} tracks without waveforms. Starting generation...`);
+
+    for (const track of tracksNeedingWaveforms) {
+      try {
+        // Check if file still exists
+        try {
+          await fs.access(track.path);
+        } catch {
+          console.warn(`⚠️ Skipping ${track.filename} - file not found`);
+          result.skipped++;
+          continue;
+        }
+
+        console.log(`📊 Generating waveform for: ${track.filename}`);
+
+        const waveformData = await WaveformGenerator.generateWaveform(track.path);
+
+        await this.store.updateTrack(track.id, { waveformData });
+        await this.store.save();
+
+        result.generated++;
+        console.log(`✅ Waveform generated (${result.generated}/${result.total}): ${track.filename}`);
+
+      } catch (error) {
+        result.failed++;
+        const errorMsg = `Failed to generate waveform for ${track.filename}: ${error instanceof Error ? error.message : error}`;
+        console.error(`❌ ${errorMsg}`);
+        result.errors.push(errorMsg);
+      }
+    }
+
+    console.log(`\n📊 Waveform generation complete:`);
+    console.log(`   Generated: ${result.generated}`);
+    console.log(`   Failed: ${result.failed}`);
+    console.log(`   Skipped: ${result.skipped}`);
+    console.log(`   Total: ${result.total}`);
+
+    return result;
   }
 }

@@ -71,6 +71,9 @@ declare global {
       stemEstimateTime: (trackId: string, model: string) => Promise<{ success: boolean; estimatedTime: number }>
 
 
+      // Logging
+      appendLog: (filename: string, content: string) => Promise<{ success: boolean; path?: string; error?: string }>
+
       // Event listeners
       onScanLibrary: (callback: (folderPath: string) => void) => void
       onExportPlaylist: (callback: () => void) => void

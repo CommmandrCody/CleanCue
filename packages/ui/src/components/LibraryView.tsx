@@ -50,6 +50,7 @@ export function LibraryView({ onPlayTrack, onSelectionChange, selectedTracks: se
   // const [showStemSeparationDialog, setShowStemSeparationDialog] = useState(false) // Disabled: not implemented in simple engine
   const [viewMode, setViewMode] = useState<'compact' | 'grid'>('compact')
   const [expandedTracks, setExpandedTracks] = useState<string[]>([])
+  const [showLegend, setShowLegend] = useState(false)
   const [keyDisplayMode, setKeyDisplayMode] = useState<'musical' | 'camelot'>(() => {
     // Load from localStorage or default to camelot
     return (localStorage.getItem('keyDisplayMode') as 'musical' | 'camelot') || 'camelot'
@@ -485,6 +486,16 @@ export function LibraryView({ onPlayTrack, onSelectionChange, selectedTracks: se
               <span>{tracks.filter(t => !t.bpm && !t.key).length} Unanalyzed</span>
             </div>
           </div>
+
+          {/* Legend Button */}
+          <button
+            onClick={() => setShowLegend(true)}
+            className="px-3 py-2 rounded-md text-sm font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors flex items-center gap-2"
+            title="Show legend for all indicators"
+          >
+            <Info className="h-4 w-4" />
+            Legend
+          </button>
 
           {/* Key Display Mode Toggle */}
           <div className="flex bg-gray-700 rounded-md p-1">
@@ -1117,6 +1128,197 @@ export function LibraryView({ onPlayTrack, onSelectionChange, selectedTracks: se
             <Info className="h-4 w-4 mr-2" />
             Copy File Path
           </button>
+        </div>
+      )}
+
+      {/* Legend Dialog */}
+      {showLegend && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-700 sticky top-0 bg-gray-800">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Info className="h-6 w-6 text-blue-400" />
+                Library Legend
+              </h2>
+              <button
+                onClick={() => setShowLegend(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Metadata Quality */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-blue-400">📋 Metadata Quality</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 text-xs rounded border bg-green-900/30 text-green-400 border-green-700">Tagged</span>
+                    <span className="text-gray-300">Rich metadata (album, genre, year) - best quality</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 text-xs rounded border bg-blue-900/30 text-blue-400 border-blue-700">Basic</span>
+                    <span className="text-gray-300">Has title and artist only</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 text-xs rounded border bg-gray-700 text-gray-400 border-gray-600">Filename</span>
+                    <span className="text-gray-300">Metadata parsed from filename - needs tagging</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* DJ Ready Status */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-green-400">🎧 DJ Analysis Status</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 bg-green-900/30 border border-green-600 rounded text-xs font-bold text-green-300">★ DJ READY</span>
+                    <span className="text-gray-300">BPM, Key, and Energy all analyzed - ready for mixing</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-1 bg-purple-900/30 border border-purple-600 rounded text-xs font-bold text-purple-300">4 STEMS</span>
+                    <span className="text-gray-300">Separated stems available (vocals, drums, bass, other)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Harmonic Mixing */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-purple-400">🎵 Harmonic Mixing Compatibility</h3>
+                <p className="text-sm text-gray-400 mb-3">When you select a track, other tracks show compatibility symbols:</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-400 text-lg">★</span>
+                    <span className="text-gray-300">Perfect - Same key or relative major/minor (energy-matching mix)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-yellow-400 text-lg">◐</span>
+                    <span className="text-gray-300">Good - Adjacent keys on Camelot wheel (smooth transition)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-400 text-lg">◯</span>
+                    <span className="text-gray-300">Caution - 2 steps away (requires skill)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-red-400 text-lg">✕</span>
+                    <span className="text-gray-300">Clash - Keys don't mix well (not recommended)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* BPM Matching */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-orange-400">🥁 BPM Compatibility</h3>
+                <p className="text-sm text-gray-400 mb-3">BPM matching symbols when a track is selected:</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-400 text-lg">★</span>
+                    <span className="text-gray-300">Perfect - Within 2% (beatmatching ready)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-yellow-400 text-lg">◐</span>
+                    <span className="text-gray-300">Good - Within 6% (easy mix)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-400 text-lg">◯</span>
+                    <span className="text-gray-300">Stretch - Within 12% (pitch riding needed)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-red-400 text-lg">✕</span>
+                    <span className="text-gray-300">Difficult - Major tempo adjustment required</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* BPM Colors */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-red-400">🔥 BPM Range Colors</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="text-red-400 font-bold">140+</span>
+                    <span className="text-gray-300">High Energy - Techno, Drum & Bass</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-400 font-bold">120-139</span>
+                    <span className="text-gray-300">House, Dance, EDM</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-yellow-400 font-bold">100-119</span>
+                    <span className="text-gray-300">Medium Tempo - Pop, Disco</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-400 font-bold">80-99</span>
+                    <span className="text-gray-300">Hip-hop, R&B, Reggae</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-blue-400 font-bold">&lt;80</span>
+                    <span className="text-gray-300">Slow/Ballad</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Energy Level */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-yellow-400">⚡ Energy Level</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="text-red-400">80-100</span>
+                    <span className="text-gray-300">High energy track</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-yellow-400">60-79</span>
+                    <span className="text-gray-300">Medium energy</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-green-400">&lt;60</span>
+                    <span className="text-gray-300">Low/chill energy</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* DJ Suitability */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-yellow-400">🎆 DJ Suitability</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span>🔥 Peak Time</span>
+                    <span className="text-gray-300">High energy + fast BPM (70+ energy, 120+ BPM)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span>🎆 Main Floor</span>
+                    <span className="text-gray-300">Medium energy (50+ energy, 100+ BPM)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span>🎵 Ambient</span>
+                    <span className="text-gray-300">Low energy/slower tracks</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Display */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-purple-400">🎹 Key Display Modes</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    <kbd className="px-2 py-1 bg-purple-600 rounded text-xs">8A</kbd>
+                    <span className="text-gray-300">Camelot Wheel notation - optimized for DJ mixing</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <kbd className="px-2 py-1 bg-purple-600 rounded text-xs">♭♯</kbd>
+                    <span className="text-gray-300">Musical notation (Am, C, F#m, etc.)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-700 bg-gray-900/50">
+              <div className="text-sm text-gray-400">
+                <strong className="text-white">Pro Tip:</strong> Use Camelot notation for quick harmonic mixing.
+                Adjacent numbers (±1) and same number different letter always mix well!
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -26,7 +26,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   const audioContextRef = useRef<AudioContext>()
   const analyserRef = useRef<AnalyserNode>()
   const sourceRef = useRef<MediaElementAudioSourceNode>()
-  const dataArrayRef = useRef<Uint8Array>()
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer>>()
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Initialize audio context and analyser
@@ -60,7 +60,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
         // Create data array
         const bufferLength = analyserRef.current.frequencyBinCount
-        dataArrayRef.current = new Uint8Array(new ArrayBuffer(bufferLength))
+        dataArrayRef.current = new Uint8Array(bufferLength) as Uint8Array<ArrayBuffer>
 
         setIsInitialized(true)
       } catch (error) {

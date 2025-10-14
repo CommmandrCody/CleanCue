@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { LibraryView } from './components/LibraryView'
 import { ScanDialog } from './components/ScanDialog'
+import { AnalysisProgress } from './components/AnalysisProgress'
 import { HealthDashboard } from './components/HealthDashboard'
 import { StemSeparation } from './components/StemSeparation'
 import { SmartMix } from './components/SmartMix'
 import { FilenameRenaming } from './components/FilenameRenaming'
 import { MetadataTagging } from './components/MetadataTagging'
+import { DJDeck } from './components/DJDeck'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { Settings } from './components/Settings'
@@ -16,7 +18,7 @@ import { ProcessingProvider } from './contexts/ProcessingContext'
 // import { StemQueueDialog } from './components/StemQueueDialog' // Disabled: not implemented in simple engine
 // import { StemSeparationProvider } from './contexts/StemSeparationContext' // Disabled: not implemented in simple engine
 
-type ViewType = 'library' | 'health' | 'stems' | 'filename' | 'metadata' | 'smartmix'
+type ViewType = 'library' | 'health' | 'analysis' | 'stems' | 'filename' | 'metadata' | 'smartmix' | 'djdeck'
 
 interface Track {
   id: string
@@ -33,7 +35,7 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showStemQueue, setShowStemQueue] = useState(false)
-  const [showLogViewer, setShowLogViewer] = useState(true)
+  const [showLogViewer, setShowLogViewer] = useState(false)
   const [logViewerHeight] = useState(200)
   const [showHelp, setShowHelp] = useState(false)
   const [appReady, setAppReady] = useState(false)
@@ -121,9 +123,9 @@ function AppContent() {
       }
 
       // Number keys for view switching
-      if (e.key >= '1' && e.key <= '6' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key >= '1' && e.key <= '8' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        const views: ViewType[] = ['library', 'health', 'filename', 'stems', 'metadata', 'smartmix']
+        const views: ViewType[] = ['library', 'analysis', 'health', 'filename', 'stems', 'metadata', 'smartmix', 'djdeck']
         const viewIndex = parseInt(e.key) - 1
         if (views[viewIndex]) {
           setCurrentView(views[viewIndex])
@@ -169,6 +171,8 @@ function AppContent() {
         return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} selectedTracks={selectedTracks} />
       case 'health':
         return <HealthDashboard />
+      case 'analysis':
+        return <AnalysisProgress selectedTracks={selectedTracks} />
       case 'stems':
         return <StemSeparation selectedTracks={selectedTracks} />
       case 'filename':
@@ -177,6 +181,9 @@ function AppContent() {
         return <MetadataTagging selectedTracks={selectedTracks} />
       case 'smartmix':
         return <SmartMix />
+      case 'djdeck':
+        // DJ Deck is rendered separately to maintain persistence
+        return <div className="flex-1"></div>
       default:
         return <LibraryView key={libraryRefreshKey} onPlayTrack={handlePlayTrack} onSelectionChange={setSelectedTracks} selectedTracks={selectedTracks} />
     }
@@ -199,9 +206,17 @@ function AppContent() {
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          <main className="flex-1 p-6 overflow-auto">
-            {renderView()}
-          </main>
+          {/* DJ Deck - Always rendered to maintain audio persistence, hidden when not active */}
+          <div className={currentView === 'djdeck' ? 'flex-1 flex flex-col' : 'hidden'}>
+            <DJDeck />
+          </div>
+
+          {/* Other views */}
+          {currentView !== 'djdeck' && (
+            <main className="flex-1 p-6 overflow-auto">
+              {renderView()}
+            </main>
+          )}
 
           {/* Log Viewer at bottom of each screen */}
           {showLogViewer && (
@@ -296,15 +311,15 @@ function AppContent() {
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">1</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Health dashboard</span>
+                    <span className="text-gray-300">Audio analysis</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">2</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Duplicates</span>
+                    <span className="text-gray-300">Health dashboard</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">3</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Analysis progress</span>
+                    <span className="text-gray-300">Filename management</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">4</kbd>
                   </div>
                   <div className="flex justify-between">
@@ -312,15 +327,15 @@ function AppContent() {
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">5</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Filename renaming</span>
+                    <span className="text-gray-300">Metadata tagging</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">6</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Metadata tagging</span>
+                    <span className="text-gray-300">Smart mix</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">7</kbd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-300">Smart mix</span>
+                    <span className="text-gray-300">DJ Deck</span>
                     <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">8</kbd>
                   </div>
                 </div>

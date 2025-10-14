@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stemEstimateTime: (trackId: string, model: string) => ipcRenderer.invoke('stem-estimate-time', trackId, model),
 
 
+  // Logging
+  appendLog: (filename: string, content: string) => ipcRenderer.invoke('append-log', filename, content),
+
   // Event listeners
   onScanLibrary: (callback: (folderPath: string) => void) => {
     ipcRenderer.on('scan-library', (_, folderPath) => callback(folderPath))
@@ -152,6 +155,9 @@ export interface ElectronAPI {
   abortAllJobs: () => Promise<void>
   createScanJob: (paths: string[], extensions?: string[], userInitiated?: boolean) => Promise<string>
   createAnalysisJobs: (trackIds: string[], analysisTypes?: string[], userInitiated?: boolean) => Promise<string>
+
+  // Logging API
+  appendLog: (filename: string, content: string) => Promise<{ success: boolean; path?: string; error?: string }>
 
   onScanLibrary: (callback: (folderPath: string) => void) => void
   onExportPlaylist: (callback: () => void) => void
