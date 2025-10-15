@@ -4,10 +4,10 @@
  * Generates high-quality frequency-analyzed waveform data like Serato DJ Pro / Rekordbox.
  * Uses FFT to split audio into frequency bands and color-code by frequency content.
  *
- * Professional DJ waveforms show:
- * - Bass (red/orange): 20-250 Hz - kicks, bass
- * - Mids (yellow/pink): 250-4000 Hz - vocals, snares, instruments
- * - Highs (blue/purple): 4000-20000 Hz - hi-hats, cymbals, air
+ * Professional DJ waveforms show (Serato/Traktor/Rekordbox/Engine DJ):
+ * - Bass (RED): 20-250 Hz - kicks, bass
+ * - Mids (GREEN): 250-4000 Hz - vocals, snares, instruments
+ * - Highs (BLUE): 4000-20000 Hz - hi-hats, cymbals, air
  */
 
 import * as fs from 'fs';

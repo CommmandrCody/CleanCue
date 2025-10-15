@@ -277,6 +277,9 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
     }
   }, [waveformData, deck])
 
+  // Mouse drag state for scrubbing
+  const [isDragging, setIsDragging] = useState(false)
+
   // Handle click to seek
   const handleMainClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!mainCanvasRef.current || duration === 0) return
@@ -285,14 +288,37 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
     const x = e.clientX - rect.left
     const clickProgress = x / rect.width
 
-    // Calculate time based on zoom window (±2 seconds from current time)
-    const zoomWindow = 4 // seconds
-    const startTime = Math.max(0, currentTime - zoomWindow / 2)
-    const endTime = Math.min(duration, currentTime + zoomWindow / 2)
+    // SERATO-STYLE: Match the zoom window calculation from the draw function
+    const zoomWindow = 10 // seconds - wider view for beat matching
+    const playheadPosition = 0.25 // 25% from left = 2.5s behind, 7.5s ahead
+    const startTime = Math.max(0, currentTime - (zoomWindow * playheadPosition))
+    const endTime = Math.min(duration, currentTime + (zoomWindow * (1 - playheadPosition)))
     const newTime = startTime + (endTime - startTime) * clickProgress
 
     onSeek(newTime)
   }
+
+  // Handle mouse drag for jog wheel scrubbing
+  const handleMainMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDragging(true)
+    handleMainClick(e) // Also seek to the clicked position
+  }
+
+  const handleMainMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDragging) return
+    handleMainClick(e)
+  }
+
+  const handleMainMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  // Global mouse up handler to catch mouse up outside canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsDragging(false)
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
+  }, [])
 
   const handleOverviewClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!overviewCanvasRef.current || duration === 0) return
@@ -321,10 +347,11 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
       const barWidth = 2  // 2px bars for smooth but fast rendering
       const totalBars = Math.floor(canvas.width / barWidth)
 
-      // Zoom window: show ±2 seconds from current position (4 seconds total - tight zoom like Serato)
-      const zoomWindow = 4 // seconds
-      const startTime = Math.max(0, currentTime - zoomWindow / 2)
-      const endTime = Math.min(duration, currentTime + zoomWindow / 2)
+      // SERATO-STYLE: Playhead at 1/4 from left, showing MORE of what's coming (10 sec total)
+      const zoomWindow = 10 // seconds - wider view for beat matching
+      const playheadPosition = 0.25 // 25% from left = 2.5s behind, 7.5s ahead
+      const startTime = Math.max(0, currentTime - (zoomWindow * playheadPosition))
+      const endTime = Math.min(duration, currentTime + (zoomWindow * (1 - playheadPosition)))
 
       // Draw waveform by layering all three frequency bands
       // This creates natural color blending like Serato
@@ -345,43 +372,45 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
         const isPassed = barTime < currentTime
         const maxHeight = canvas.height * 0.48
 
-        // Draw each frequency band as a separate layer with alpha
-        // Bass (low) - widest, red/orange
+        // PROFESSIONAL DJ SOFTWARE COLOR SCHEME (Serato/Traktor/Rekordbox/Engine DJ)
+        // RED = Bass, GREEN = Mids, BLUE = Treble (RGB frequency visualization)
+
+        // Bass (low) - RED - widest, most prominent
         const lowHeight = lowAmp * maxHeight
         if (lowHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(255, 107, 53, 0.8)' : 'rgba(77, 36, 25, 0.8)'
+          ctx.fillStyle = isPassed ? 'rgba(255, 50, 50, 0.9)' : 'rgba(100, 20, 20, 0.9)'  // Bright red -> dark red
           ctx.fillRect(x, centerY - lowHeight, barWidth, lowHeight)
           ctx.fillRect(x, centerY, barWidth, lowHeight)
         }
 
-        // Mids - medium, yellow
+        // Mids - GREEN - medium prominence
         const midHeight = midAmp * maxHeight
         if (midHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(247, 208, 96, 0.7)' : 'rgba(77, 61, 25, 0.7)'
+          ctx.fillStyle = isPassed ? 'rgba(50, 255, 50, 0.8)' : 'rgba(20, 100, 20, 0.8)'  // Bright green -> dark green
           ctx.fillRect(x, centerY - midHeight, barWidth, midHeight)
           ctx.fillRect(x, centerY, barWidth, midHeight)
         }
 
-        // Highs - thinnest, cyan/blue
+        // Highs - BLUE - thinnest, detail layer
         const highHeight = highAmp * maxHeight
         if (highHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(78, 205, 196, 0.6)' : 'rgba(26, 61, 58, 0.6)'
+          ctx.fillStyle = isPassed ? 'rgba(50, 150, 255, 0.7)' : 'rgba(20, 60, 100, 0.7)'  // Bright blue -> dark blue
           ctx.fillRect(x, centerY - highHeight, barWidth, highHeight)
           ctx.fillRect(x, centerY, barWidth, highHeight)
         }
       }
 
-      // Draw beat grid markers (if BPM is available)
+      // Draw beat grid markers (if BPM is available) - ENHANCED for DJing
       if (bpm && bpm > 0) {
         const beatDuration = 60 / bpm  // Seconds per beat
         const barDuration = 60 / bpm * 4  // Seconds per bar (4 beats)
 
-        // Draw bar markers (every 4 beats) - brighter
+        // Draw bar markers (every 4 beats) - BRIGHTER for downbeats (like Serato)
         for (let time = 0; time <= duration; time += barDuration) {
           if (time >= startTime && time <= endTime) {
             const x = ((time - startTime) / (endTime - startTime)) * canvas.width
-            ctx.strokeStyle = '#ffffff40'
-            ctx.lineWidth = 2
+            ctx.strokeStyle = '#ffffff80'  // Increased opacity from 40 to 80
+            ctx.lineWidth = 3  // Increased width from 2 to 3
             ctx.beginPath()
             ctx.moveTo(x, 0)
             ctx.lineTo(x, canvas.height)
@@ -389,13 +418,13 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
           }
         }
 
-        // Draw beat markers - dimmer
+        // Draw beat markers - visible but dimmer than bars
         for (let time = 0; time <= duration; time += beatDuration) {
           // Skip if this is also a bar marker
           if (time % barDuration !== 0) {
             if (time >= startTime && time <= endTime) {
               const x = ((time - startTime) / (endTime - startTime)) * canvas.width
-              ctx.strokeStyle = '#ffffff15'
+              ctx.strokeStyle = '#ffffff30'  // Increased opacity from 15 to 30
               ctx.lineWidth = 1
               ctx.beginPath()
               ctx.moveTo(x, 0)
@@ -428,9 +457,13 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
         }
       })
 
-      // Draw center playhead (always at center since we're zoomed around it)
+      // Draw playhead at 25% from left (SERATO-STYLE: 2.5s behind, 7.5s ahead)
+      const playheadX = canvas.width * playheadPosition  // 25% from left
       ctx.fillStyle = '#fff'
-      ctx.fillRect(canvas.width / 2 - 2, 0, 4, canvas.height)
+      ctx.shadowColor = '#fff'
+      ctx.shadowBlur = 4
+      ctx.fillRect(playheadX - 2, 0, 4, canvas.height)
+      ctx.shadowBlur = 0
 
       animationRef.current = requestAnimationFrame(draw)
     }
@@ -478,24 +511,24 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
         const isPassed = barProgress < progress
         const maxHeight = canvas.height * 0.45
 
-        // Layer the frequencies with transparency
+        // RGB frequency visualization (matching main waveform)
         const lowHeight = lowAmp * maxHeight
         if (lowHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(255, 107, 53, 0.8)' : 'rgba(77, 36, 25, 0.8)'
+          ctx.fillStyle = isPassed ? 'rgba(255, 50, 50, 0.9)' : 'rgba(100, 20, 20, 0.9)'  // RED for bass
           ctx.fillRect(x, centerY - lowHeight, barWidth, lowHeight)
           ctx.fillRect(x, centerY, barWidth, lowHeight)
         }
 
         const midHeight = midAmp * maxHeight
         if (midHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(247, 208, 96, 0.7)' : 'rgba(77, 61, 25, 0.7)'
+          ctx.fillStyle = isPassed ? 'rgba(50, 255, 50, 0.8)' : 'rgba(20, 100, 20, 0.8)'  // GREEN for mids
           ctx.fillRect(x, centerY - midHeight, barWidth, midHeight)
           ctx.fillRect(x, centerY, barWidth, midHeight)
         }
 
         const highHeight = highAmp * maxHeight
         if (highHeight > 0) {
-          ctx.fillStyle = isPassed ? 'rgba(78, 205, 196, 0.6)' : 'rgba(26, 61, 58, 0.6)'
+          ctx.fillStyle = isPassed ? 'rgba(50, 150, 255, 0.7)' : 'rgba(20, 60, 100, 0.7)'  // BLUE for highs
           ctx.fillRect(x, centerY - highHeight, barWidth, highHeight)
           ctx.fillRect(x, centerY, barWidth, highHeight)
         }
@@ -529,13 +562,16 @@ function UltraHighResWaveform({ isPlaying, currentTime, duration, hotCues, onSee
 
   return (
     <div className="flex flex-col h-full">
-      {/* Main zoomed waveform - Higher resolution */}
+      {/* Main zoomed waveform - Higher resolution with jog wheel scrubbing */}
       <canvas
         ref={mainCanvasRef}
         width={2000}
         height={150}
-        className="w-full flex-1 bg-black cursor-pointer"
-        onClick={handleMainClick}
+        className={`w-full flex-1 bg-black ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handleMainMouseDown}
+        onMouseMove={handleMainMouseMove}
+        onMouseUp={handleMainMouseUp}
+        onMouseLeave={handleMainMouseUp}
       />
       {/* Overview waveform */}
       <canvas
