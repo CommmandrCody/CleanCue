@@ -95,6 +95,7 @@
     ],
     "mac": {
       "category": "public.app-category.music",
+      "icon": "build/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -111,6 +112,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -134,6 +136,7 @@
       "artifactName": "${productName}-${version}-${arch}-Portable.${ext}"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         {
           "target": "AppImage",
